@@ -84,7 +84,19 @@ export function useSwapExecution() {
       amount: string;
     }): Promise<PreparedSwap | PreparedDirectSwap | null> => {
       if (!isConnected || !address) {
-        setStage({ kind: "error", message: "Conectá tu billetera primero." });
+        setStage({ kind: "error", message: "Conecta tu billetera primero." });
+        return null;
+      }
+
+      // Network check — must be on Base (chainId 8453)
+      const eth = (window as unknown as {
+        ethereum?: {
+          request: (args: { method: string; params?: unknown[] }) => Promise<string>;
+          chainId?: string;
+        };
+      }).ethereum;
+      if (eth?.chainId && parseInt(eth.chainId, 16) !== 8453) {
+        setStage({ kind: "error", message: "Estás en otra red. Cambia a Base para continuar." });
         return null;
       }
 
@@ -216,12 +228,14 @@ export function useSwapExecution() {
         return { swapHash: swapTx, gasEstimate, gasPriceWei };
       } catch (e) {
         const err = e as Error & { code?: number };
-        if (err.code === 4001 || err.code === -32603) {
-          setStage({ kind: "error", message: "Cancelaste la transacción." });
+        const isRejection = err.code === 4001 || err.code === -32603;
+
+        if (isRejection) {
+          setStage({ kind: "error", message: "Cancelaste la firma. Sin cambio realizado." });
         } else {
           setStage({
             kind: "error",
-            message: err.message || "Algo falló. Intentá de nuevo.",
+            message: "El intercambio no se completó. La tasa pudo haber cambiado. Vuelve a intentarlo.",
           });
         }
         return null;
