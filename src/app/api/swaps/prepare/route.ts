@@ -15,7 +15,11 @@ const SwapPrepSchema = z.object({
   amount: z.string().regex(/^\d+(\.\d+)?$/, 'Amount must be a positive number'),
   recipient: z.string().regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid recipient address'),
   slippageBps: z.number().int().min(0).max(1000).optional(),
-})
+}).transform((data) => ({
+  ...data,
+  // Normalize addresses to checksummed format for ethers v6
+  recipient: ethers.getAddress(data.recipient),
+}))
 
 const ROUTER_ADDRESS = process.env.NEXT_PUBLIC_UNISWAP_V3_ROUTER || '0x2626664c2603336E57B271c5C0b26F421741e481'
 const BASE_RPC = process.env.BASE_RPC_URL || 'https://mainnet.base.org'
