@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Brave-inspired orange lion-head silhouette. -->
+  <rect width="64" height="64" rx="14" fill="#FB542B"/>
+  <g fill="#FFFFFF" stroke="#FFFFFF" stroke-linejoin="round" stroke-width="0.5">
+    <path d="M22 28 Q20 18 32 16 Q44 18 42 28 Q44 34 42 40 Q38 46 32 46 Q26 46 22 40 Q20 34 22 28 Z"/>
+    <circle cx="27" cy="30" r="2.2" fill="#1A1A1A" stroke="none"/>
+    <circle cx="37" cy="30" r="2.2" fill="#1A1A1A" stroke="none"/>
+    <path d="M28 36 L32 38 L36 36" fill="none" stroke="#1A1A1A" stroke-width="1.6"/>
+    <path d="M22 38 Q18 42 20 48 L24 44 Z" fill="#FB542B"/>
+    <path d="M42 38 Q46 42 44 48 L40 44 Z" fill="#FB542B"/>
+  </g>
+</svg>

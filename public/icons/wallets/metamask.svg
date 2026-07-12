@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- MetaMask-inspired orange fox face. Geometric simplification of the
+       canonical mark — clearly recognizable, not pixel-level tracing. -->
+  <rect width="64" height="64" rx="14" fill="#F6851B"/>
+  <g fill="#FFFFFF" stroke="#FFFFFF" stroke-linejoin="round" stroke-width="0.5">
+    <path d="M14 22 L32 14 L50 22 L46 40 L32 48 L18 40 Z" />
+    <path d="M32 14 L14 22 L19 36 L32 22 Z" fill="#E2761B" stroke="none"/>
+    <path d="M32 14 L50 22 L45 36 L32 22 Z" fill="#E2761B" stroke="none"/>
+    <circle cx="32" cy="34" r="3" fill="#1A1A1A" stroke="none"/>
+    <path d="M22 28 L32 28 L32 34 L22 32 Z" fill="#FFFFFF" stroke="none"/>
+    <path d="M42 28 L32 28 L32 34 L42 32 Z" fill="#FFFFFF" stroke="none"/>
+  </g>
+</svg>

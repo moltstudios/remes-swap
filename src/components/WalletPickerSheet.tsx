@@ -176,10 +176,16 @@ export function WalletPickerSheet({ open, onClose }: Props) {
   );
 }
 
+/**
+ * getConnectorName — for the generic 'injected' connector, we can't know
+ * in advance whether it's MetaMask, Brave, Rabby, or Phantom. Show a
+ * neutral label. After the user connects, we rename the pill in the
+ * header based on the actual provider (see WalletButton.tsx).
+ */
 function getConnectorName(id: string): string {
   switch (id) {
     case "injected":
-      return "MetaMask";
+      return "Billetera del navegador";
     case "coinbaseWalletSDK":
       return "Coinbase Wallet";
     case "walletConnect":
@@ -189,29 +195,72 @@ function getConnectorName(id: string): string {
   }
 }
 
+/**
+ * getConnectorError — categorizes wagmi/viem errors into Spanish-friendly
+ * messages. If we don't recognize the shape, surface the raw error code
+ * so the user can copy/paste it for support (catches edge cases like
+ * "Already processing eth_requestAccounts" or unexpected RPC errors).
+ */
 function getConnectorError(error: Error): string {
   const msg = error.message || "";
   if (msg.includes("Provider not found") || msg.includes("provider not found")) {
-    return "Billetera no encontrada. Instalá la extensión o usá WalletConnect con QR.";
+    return "Billetera no encontrada. Instala la extensión o usa WalletConnect con QR.";
   }
-  if (msg.includes("rejected")) {
+  if (msg.includes("rejected") || msg.includes("denied")) {
     return "Conexión rechazada por el usuario.";
   }
   if (msg.includes("connector not found")) {
-    return "Conector no disponible. Recargá la página e intentá de nuevo.";
+    return "Conector no disponible. Recarga la página e intenta de nuevo.";
   }
-  return msg.length > 100 ? msg.slice(0, 100) + "..." : msg;
+  if (msg.includes("locked")) {
+    return "Tu billetera está bloqueada. Ábrela y vuelve a intentar.";
+  }
+  if (
+    msg.includes("wrong network") ||
+    msg.includes("chain mismatch") ||
+    msg.includes("Unrecognized chain")
+  ) {
+    return "Red incorrecta. Cambia a Base en tu billetera.";
+  }
+  if (msg.includes("rate limit") || msg.includes("Limit exceeded")) {
+    return "Demasiados intentos. Espera un minuto e intenta de nuevo.";
+  }
+  if (msg.includes("already pending")) {
+    return "Ya hay una solicitud pendiente en tu billetera. Ábrela para responder.";
+  }
+  // Fallback: surface a truncated message + the error name so support can debug
+  const truncated = msg.length > 80 ? msg.slice(0, 80) + "..." : msg;
+  return `Error: ${truncated}`;
 }
 
+/**
+ * WalletConnectorIcon — uses real brand SVGs from /public/icons/wallets/.
+ * Falls back to the MetaMask orange tile for the generic 'injected'
+ * connector (covers Brave, Rabby, Phantom, etc. — we can't know
+ * pre-connect which is installed).
+ */
 function WalletConnectorIcon({ id }: { id: string }) {
-  if (id === "injected") {
-    return <span className="w-8 h-8 rounded-full bg-[#F6851B] flex items-center justify-center text-white text-xs font-bold">M</span>;
+  const iconMap: Record<string, string> = {
+    injected: "/icons/wallets/metamask.svg",
+    coinbaseWalletSDK: "/icons/wallets/coinbase.svg",
+    walletConnect: "/icons/wallets/walletconnect.svg",
+  };
+  const src = iconMap[id];
+  if (!src) {
+    return (
+      <span className="w-8 h-8 rounded-full bg-ink flex items-center justify-center text-white text-xs font-bold">
+        ?
+      </span>
+    );
   }
-  if (id === "coinbaseWalletSDK") {
-    return <span className="w-8 h-8 rounded-full bg-[#0052FF] flex items-center justify-center text-white text-xs font-bold">C</span>;
-  }
-  if (id === "walletConnect") {
-    return <span className="w-8 h-8 rounded-full bg-[#3B99FC] flex items-center justify-center text-white text-xs font-bold">W</span>;
-  }
-  return <span className="w-8 h-8 rounded-full bg-ink flex items-center justify-center text-white text-xs font-bold">?</span>;
+  return (
+    <img
+      src={src}
+      alt=""
+      width={32}
+      height={32}
+      className="w-8 h-8 rounded-lg object-contain"
+      aria-hidden="true"
+    />
+  );
 }
