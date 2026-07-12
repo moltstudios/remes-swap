@@ -159,15 +159,16 @@ export async function POST(request: NextRequest) {
 
 function resolveAddress(identifier: string): string {
   const TOKENS: Record<string, string> = {
-    USDC: process.env.NEXT_PUBLIC_USDC_ADDRESS || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-    USDT: process.env.NEXT_PUBLIC_USDT_ADDRESS || '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2',
+    USDC: (process.env.NEXT_PUBLIC_USDC_ADDRESS || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913').trim(),
+    USDT: (process.env.NEXT_PUBLIC_USDT_ADDRESS || '0xfde4C96c8593536E31F229EA8f37b2ADA2699bb2').trim(),
   }
 
-  const upper = identifier.toUpperCase()
+  const upper = identifier.trim().toUpperCase()
   if (TOKENS[upper]) return TOKENS[upper]
 
-  if (identifier.startsWith('0x') && identifier.length === 42) {
-    return identifier
+  const cleaned = identifier.trim()
+  if (cleaned.startsWith('0x') && cleaned.length === 42) {
+    return cleaned
   }
 
   throw new Error(`Unknown token: ${identifier}`)
