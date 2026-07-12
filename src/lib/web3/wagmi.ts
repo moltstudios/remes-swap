@@ -2,11 +2,6 @@ import { http, createConfig } from "wagmi";
 import { base, baseSepolia } from "wagmi/chains";
 import { injected, walletConnect, coinbaseWallet } from "wagmi/connectors";
 
-// wagmi's Target type has overly strict provider typing for runtime detection.
-// We cast window.ethereum to `any` since the shape varies by wallet.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyProvider = any;
-
 // WalletConnect Cloud project ID
 // Register at https://cloud.walletconnect.com (free, 30 seconds)
 // MUST be a real project ID — fake ones cause "Invalid App Configuration"
@@ -45,22 +40,22 @@ function getInjectedTarget() {
   if (eth.providers?.length) {
     const mm = eth.providers.find((p) => p.isMetaMask && !p.isBraveWallet);
     if (mm) {
-      return { id: "isMetaMask", name: "MetaMask", provider: mm as AnyProvider };
+      return { id: "isMetaMask", name: "MetaMask", provider: mm as any };
     }
   }
 
   // Single provider: Brave Wallet (without MetaMask flag)
   if (eth.isBraveWallet && !eth.isMetaMask) {
-    return { id: "isBraveWallet", name: "Brave Wallet", provider: eth as AnyProvider };
+    return { id: "isBraveWallet", name: "Brave Wallet", provider: eth as any };
   }
 
   // MetaMask (single or primary)
   if (eth.isMetaMask) {
-    return { id: "isMetaMask", name: "MetaMask", provider: eth as AnyProvider };
+    return { id: "isMetaMask", name: "MetaMask", provider: eth as any };
   }
 
   // Unknown injected provider
-  return { id: "injected" as const, name: "Browser Wallet", provider: eth as AnyProvider };
+  return { id: "injected" as const, name: "Browser Wallet", provider: eth as any };
 }
 
 export const config = createConfig({
