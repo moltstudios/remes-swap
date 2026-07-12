@@ -21,8 +21,8 @@ const SwapPrepSchema = z.object({
   recipient: ethers.getAddress(data.recipient),
 }))
 
-const ROUTER_ADDRESS = process.env.NEXT_PUBLIC_UNISWAP_V3_ROUTER || '0x2626664c2603336E57B271c5C0b26F421741e481'
-const BASE_RPC = process.env.BASE_RPC_URL || 'https://mainnet.base.org'
+const ROUTER_ADDRESS = (process.env.NEXT_PUBLIC_UNISWAP_V3_ROUTER || '0x2626664c2603336E57B271c5C0b26F421741e481').trim()
+const BASE_RPC = (process.env.BASE_RPC_URL || 'https://mainnet.base.org').trim()
 
 export async function POST(request: NextRequest) {
   try {

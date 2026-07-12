@@ -19,7 +19,7 @@ import { ethers } from 'ethers'
 // CONFIG
 // ============================================================
 
-const BASE_RPC = process.env.BASE_RPC_URL || 'https://mainnet.base.org'
+const BASE_RPC = (process.env.BASE_RPC_URL || 'https://mainnet.base.org').trim()
 const PLATFORM_FEE_BIPS = parseInt(process.env.PLATFORM_FEE_BIPS || '30')
 const DEFAULT_SLIPPAGE_BPS = 50
 
@@ -31,11 +31,11 @@ interface TokenConfig {
 
 const TOKENS: Record<string, TokenConfig> = {
   USDC: {
-    address: process.env.NEXT_PUBLIC_USDC_ADDRESS || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    address: (process.env.NEXT_PUBLIC_USDC_ADDRESS || '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913').trim(),
     decimals: 6,
   },
   USDT: {
-    address: process.env.NEXT_PUBLIC_USDT_ADDRESS || '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2',
+    address: (process.env.NEXT_PUBLIC_USDT_ADDRESS || '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2').trim(),
     decimals: 6,
   },
 }
