@@ -30,7 +30,7 @@ function tokenColor(symbol: string): string {
       return "bg-[#2775CA] text-white";
     case "USDT":
       return "bg-[#26A17B] text-white";
-    case "CUSD":
+    case "RMUSD":
       return "bg-ink-900 text-white";
     case "DAI":
       return "bg-[#F5AC37] text-white";

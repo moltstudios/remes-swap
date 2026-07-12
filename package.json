@@ -1,8 +1,8 @@
 {
-  "name": "ciento-swap",
+  "name": "remes-swap",
   "version": "0.1.0",
   "private": true,
-  "description": "Ciento Swap — mobile-first PWA for swapping stablecoins on Base chain",
+  "description": "Remes Swap — mobile-first PWA for swapping stablecoins on Base chain",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

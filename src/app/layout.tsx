@@ -12,14 +12,14 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Ciento — El dólar que funciona en todas partes",
+  title: "Remes — El dólar que funciona en todas partes",
   description:
     "Intercambiá USDC y USDT al instante sobre Base. Sin custodia, sin fronteras, en español.",
-  applicationName: "Ciento Swap",
+  applicationName: "Remes Swap",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    title: "Ciento",
+    title: "Remes",
     statusBarStyle: "default",
   },
   icons: {

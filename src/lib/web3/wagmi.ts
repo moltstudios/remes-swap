@@ -16,17 +16,17 @@ export const config = createConfig({
     walletConnect({
       projectId: WC_PROJECT_ID,
       metadata: {
-        name: "Ciento Swap",
+        name: "Remes Swap",
         description: "El dólar que funciona en todas partes",
-        url: typeof window !== "undefined" ? window.location.origin : "https://ciento.app",
-        icons: ["https://ciento.app/icons/icon-192.png"],
+        url: typeof window !== "undefined" ? window.location.origin : "https://remes.app",
+        icons: ["https://remes.app/icons/icon-192.png"],
       },
       showQrModal: true,
     }),
     // Coinbase Wallet SDK — important for Base adoption
     coinbaseWallet({
-      appName: "Ciento Swap",
-      appLogoUrl: "https://ciento.app/icons/icon-192.png",
+      appName: "Remes Swap",
+      appLogoUrl: "https://remes.app/icons/icon-192.png",
     }),
   ],
   transports: {

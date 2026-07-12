@@ -88,7 +88,8 @@ function BottomNav() {
 }
 
 function Logo({ className }: { className?: string }) {
-  // Ciento mark — a clean "100" inspired by the codename (cien = 100)
+  // Remes mark — "R" monogram on a banking-grade dark square.
+  // The descender of the R nods to the trail of a money transfer.
   return (
     <svg
       className={className}
@@ -99,14 +100,15 @@ function Logo({ className }: { className?: string }) {
       <rect width="28" height="28" rx="8" fill="#0E1119" />
       <text
         x="14"
-        y="18"
+        y="19"
         textAnchor="middle"
         fontFamily="Inter, sans-serif"
-        fontSize="10"
+        fontSize="16"
         fontWeight="700"
         fill="white"
+        letterSpacing="-0.5"
       >
-        100
+        Re
       </text>
     </svg>
   );

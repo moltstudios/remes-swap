@@ -3,7 +3,7 @@ import type { Dictionary } from "./es";
 // English translations — secondary language. Mirror shape of `es.ts`.
 export const en: Dictionary = {
   brand: {
-    name: "Ciento",
+    name: "Remes",
     tagline: "The dollar that works everywhere",
   },
 
@@ -140,7 +140,7 @@ export const en: Dictionary = {
 
   footer: {
     tagline:
-      "Built by Ciento Labs. The dollar that works everywhere.",
+      "Built by Remes Labs. The dollar that works everywhere.",
     poweredBy: "Powered by Base",
   },
 } as const;

@@ -4,7 +4,7 @@
 export const es = {
   // Brand
   brand: {
-    name: "Ciento",
+    name: "Remes",
     tagline: "El dólar que funciona en todas partes",
   },
 
@@ -148,7 +148,7 @@ export const es = {
 
   // Footer
   footer: {
-    tagline: "Construido por Ciento Labs. El dólar que funciona en todas partes.",
+    tagline: "Construido por Remes Labs. El dólar que funciona en todas partes.",
     poweredBy: "Desarrollado sobre Base",
   },
 };

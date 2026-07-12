@@ -2,12 +2,12 @@
   <rect width="512" height="512" rx="108" fill="#0E1119"/>
   <text
     x="256"
-    y="316"
+    y="334"
     textAnchor="middle"
     fontFamily="Inter, -apple-system, system-ui, sans-serif"
-    fontSize="184"
+    fontSize="280"
     fontWeight="700"
     fill="#FFFFFF"
-    letterSpacing="-6"
-  >100</text>
+    letterSpacing="-12"
+  >Re</text>
 </svg>

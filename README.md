@@ -1,8 +1,11 @@
-# Ciento Swap
+# Remes Swap
 
 > El dólar que funciona en todas partes — mobile-first PWA for swapping stablecoins on Base chain.
 
 Spanish-first, non-custodial, banking-grade trust. Phase 1 MVP.
+
+> Brand: **Remes** (from _remesa_ — remittance). Native stablecoin ticker: **RMUSD**.
+> Renamed from the internal codename "Project Ciento" on 2026-07-12.
 
 ## Stack
 
@@ -24,7 +27,7 @@ Visit `http://localhost:3000`.
 
 ## Environment
 
-See [`.env.example`](./.env.example). The quote API is mocked in-app until Neo's backend is live at `NEXT_PUBLIC_API_BASE`.
+See [`.env.example`](./.env.example). The quote API is mocked in-app until the backend API is live at `NEXT_PUBLIC_API_BASE`.
 
 ## Architecture
 
@@ -69,15 +72,18 @@ src/
 - [x] Mock quote fallback (1:1 minus 0.3% fee) until backend is live
 - [x] Settings (language + slippage)
 - [x] Transaction history placeholder
+- [x] Brand: Remes (renamed from Ciento on 2026-07-12)
 - [ ] Real Uniswap V3 swap execution (Week 2 — wiring `writeContract`)
-- [ ] Real quote API integration (depends on Neo)
+- [ ] Real quote API integration (depends on backend)
 - [ ] Push notifications (Week 3)
 
-## Coordination with Neo
+## Quote API contract
 
-Quote API contract (TBD confirmed):
-- **Input:** `{ sourceAsset, destAsset, amount, slippageBps? }`
-- **Output:** `{ expectedOutput, minReceived, fee, priceImpact, feePercent, route? }`
+```
+POST {API_BASE}/api/quote
+→ { sourceAsset, destAsset, amount, slippageBps? }
+← { expectedOutput, minReceived, fee, priceImpact, feePercent, route? }
+```
 
 Current placeholder: `src/lib/quote.ts` — swap mock for real `fetch('/api/quote')` when `NEXT_PUBLIC_API_BASE` is set.
 
@@ -91,4 +97,4 @@ We **never** touch user funds. All swaps execute via smart contracts; the user s
 vercel --prod --yes
 ```
 
-Configured for the `moltstudios` Vercel account.
+Configured for the `moltstudios` Vercel account. Project alias: `remes-swap.vercel.app`.

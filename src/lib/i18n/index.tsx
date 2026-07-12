@@ -22,7 +22,7 @@ type I18nContextType = {
 
 const I18nContext = createContext<I18nContextType | null>(null);
 
-const STORAGE_KEY = "ciento.locale";
+const STORAGE_KEY = "remes.locale";
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>("es");
