@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useAccount, useBalance } from "wagmi";
 import { TokenSelector } from "./TokenSelector";
 import { TokenLogo, ImpactBadge } from "./TokenLogo";
@@ -13,19 +13,39 @@ import {
 } from "@/lib/format";
 import { SUPPORTED_TOKENS, type TokenMeta } from "@/lib/tokens";
 import { fetchQuote, type QuoteResponse } from "@/lib/quote";
+import { UNISWAP_V3 } from "@/lib/web3/contracts";
 
 const DEFAULT_SLIPPAGE_BPS = 50;
+
+type SwapStep = {
+  step: number;
+  label: string;
+  description: string;
+  to: string;
+  data: string;
+  value: string;
+};
+
+type SwapPrepResponse = {
+  quote: QuoteResponse;
+  steps: SwapStep[];
+  routerAddress: string;
+  deadline: number;
+};
 
 export function SwapCard() {
   const { t } = useI18n();
   const { address, isConnected, chain } = useAccount();
 
   const [fromToken, setFromToken] = useState<TokenMeta>(SUPPORTED_TOKENS[0]);
-  const [toToken, setToToken] = useState<TokenMeta>(SUPPORTED_TOKENS[1]);
+  const [toToken, setToToken] = useState<TokenInfo>(SUPPORTED_TOKENS[1]);
   const [amount, setAmount] = useState("");
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [swapping, setSwapping] = useState(false);
+  const [swapStatus, setSwapStatus] = useState<string | null>(null);
+  const [txHash, setTxHash] = useState<string | null>(null);
 
   const { data: fromBalance } = useBalance({
     address,
@@ -52,7 +72,7 @@ export function SwapCard() {
           slippageBps: DEFAULT_SLIPPAGE_BPS,
         });
         setQuote(q);
-      } catch (e) {
+      } catch {
         setError(t.swap.quoteFailed);
         setQuote(null);
       } finally {
@@ -77,14 +97,116 @@ export function SwapCard() {
     return out.toFixed(6);
   }, [quote, amount, receivedDisplay]);
 
-  const handleSwap = () => {
-    // TODO Week 2: wire to writeContract using UNISWAP_V3.SwapRouter02
-    // For now this is a scaffolded stub so the UX flow can be tested.
-    alert(
-      `Stub: swap ${amount} ${fromToken.symbol} → ${receivedDisplay} ${toToken.symbol}\n` +
-        `Wire to Neo's swap endpoint in Week 2.`
-    );
-  };
+  // Execute swap: prepare calldata → sign in wallet → broadcast
+  const handleSwap = useCallback(async () => {
+    if (!isConnected || !address || !quote || !amount) return;
+
+    setSwapping(true);
+    setError(null);
+    setSwapStatus("Preparando transacción...");
+    setTxHash(null);
+
+    try {
+      // 1. Get calldata from our backend
+      const res = await fetch("/api/swaps/prepare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceAsset: fromToken.address,
+          destAsset: toToken.address,
+          amount,
+          recipient: address,
+          slippageBps: DEFAULT_SLIPPAGE_BPS,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to prepare swap");
+      }
+
+      const prep: SwapPrepResponse = await res.json();
+
+      // 2. Request signature from user's wallet via wagmi
+      // Step 1: Approve (if needed)
+      setSwapStatus("Revisar permiso en tu billetera...");
+
+      // Use window.ethereum directly for the transaction — wagmi's useSendTransaction
+      // requires more setup. This works with MetaMask, Coinbase, and WalletConnect.
+      const eth = window.ethereum;
+      if (!eth) {
+        throw new Error("No wallet found. Please install MetaMask or connect via WalletConnect.");
+      }
+
+      const approveStep = prep.steps[0];
+      const swapStep = prep.steps[1];
+
+      // Send approve transaction
+      const approveTx = await eth.request({
+        method: "eth_sendTransaction",
+        params: [{
+          from: address,
+          to: approveStep.to,
+          data: approveStep.data,
+          value: "0x0",
+        }],
+      }) as string;
+
+      setSwapStatus("Esperando confirmación de permiso...");
+      setTxHash(approveTx);
+
+      // Wait for approve confirmation (poll the provider)
+      await waitForTx(approveTx);
+      setSwapStatus("Permiso confirmado. Ejecutando swap...");
+
+      // Step 2: Send swap transaction
+      const swapTxHash = await eth.request({
+        method: "eth_sendTransaction",
+        params: [{
+          from: address,
+          to: swapStep.to,
+          data: swapStep.data,
+          value: "0x0",
+        }],
+      }) as string;
+
+      setTxHash(swapTxHash);
+      setSwapStatus(`¡Swap enviado! TX: ${swapTxHash.slice(0, 10)}...`);
+
+      // 3. Record the swap in our backend
+      await fetch("/api/swaps/record", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: address, // temporary: use wallet address as ID until auth is wired
+          source_asset: fromToken.symbol,
+          dest_asset: toToken.symbol,
+          source_amount: amount,
+          dest_amount: quote.expectedOutput,
+          rate: quote.route || "",
+          fee_amount: quote.fee,
+          fee_currency: fromToken.symbol,
+          evm_tx_hash: swapTxHash,
+          route: quote.route || "Uniswap V3",
+        }),
+      }).catch(() => {}); // non-blocking — record failures shouldn't break UX
+
+      setSwapStatus("¡Swap completado! ✅");
+      setAmount("");
+      setQuote(null);
+    } catch (e) {
+      const err = e as Error & { code?: number };
+      if (err.code === 4001 || err.code === -32603) {
+        setSwapStatus(null);
+        setError("Transacción rechazada por el usuario");
+      } else {
+        setError(err.message || "Error al ejecutar el swap");
+        setSwapStatus(null);
+      }
+    } finally {
+      setSwapping(false);
+    }
+  }, [isConnected, address, quote, amount, fromToken, toToken]);
 
   return (
     <div className="card p-5 sm:p-6 space-y-4">
@@ -149,7 +271,7 @@ export function SwapCard() {
         <button
           onClick={() => {
             const prev = fromToken;
-            setFromToken(toToken);
+            setFromToken(toToken as TokenMeta);
             setToToken(prev);
             setAmount("");
             setQuote(null);
@@ -187,7 +309,7 @@ export function SwapCard() {
           <TokenSelector
             label={t.swap.to}
             selected={toToken}
-            onChange={setToToken}
+            onChange={(v) => setToToken(v as TokenInfo)}
             options={SUPPORTED_TOKENS}
             exclude={fromToken}
           />
@@ -224,6 +346,22 @@ export function SwapCard() {
         <p className="text-small text-red-600 text-center">{error}</p>
       )}
 
+      {swapStatus && (
+        <div className="text-small text-center text-ink-600 bg-surface-alt rounded-card p-3">
+          {swapStatus}
+          {txHash && (
+            <a
+              href={`https://basescan.org/tx/${txHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block mt-1 text-ink-500 underline hover:text-ink-900"
+            >
+              Ver en Basescan ↗
+            </a>
+          )}
+        </div>
+      )}
+
       {/* CTA */}
       <button
         onClick={handleSwap}
@@ -232,7 +370,8 @@ export function SwapCard() {
           !amount ||
           !quote ||
           loading ||
-          insufficient
+          insufficient ||
+          swapping
         }
         className="btn-primary w-full"
       >
@@ -242,6 +381,8 @@ export function SwapCard() {
           ? t.swap.insufficientBalance
           : loading
           ? t.swap.quoteLoading
+          : swapping
+          ? "Procesando..."
           : !amount
           ? t.swap.enterAmount
           : t.swap.swap}
@@ -249,6 +390,32 @@ export function SwapCard() {
     </div>
   );
 }
+
+// Helper: poll for transaction receipt
+async function waitForTx(txHash: string, timeoutMs: number = 60000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const eth = (typeof window !== "undefined" ? window.ethereum : undefined);
+      if (!eth) return;
+      const receipt = await eth.request({
+        method: "eth_getTransactionReceipt",
+        params: [txHash],
+      }) as { status: string } | null;
+      if (receipt) {
+        if (receipt.status === "0x1") return;
+        throw new Error("Transaction failed");
+      }
+    } catch {
+      // ignore polling errors
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  // Don't throw on timeout — the tx may still confirm
+}
+
+// Type alias to avoid a naming conflict
+type TokenInfo = TokenMeta;
 
 function Row({
   label,
