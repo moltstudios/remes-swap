@@ -223,9 +223,11 @@ export function SwapCard() {
       )}
 
       <div className="sticky bottom-0 -mx-md px-md pt-md pb-md bg-gradient-to-t from-bg via-bg to-transparent">
-        <BigCTA state={ctaState} onClick={handleCta} ariaLabel={ctaLabel}>
-          {ctaLabel}
-        </BigCTA>
+        {isConnected && (
+          <BigCTA state={ctaState} onClick={handleCta} ariaLabel={ctaLabel}>
+            {ctaLabel}
+          </BigCTA>
+        )}
       </div>
     </div>
   );
