@@ -6,7 +6,6 @@ import { Logo } from "@/components/Logo";
 import { WalletButton } from "@/components/WalletButton";
 import { BigCTA } from "@/components/BigCTA";
 import { SuccessCheck } from "@/components/SuccessCheck";
-import { TrustBar } from "@/components/TrustBar";
 import { useI18n } from "@/lib/i18n";
 import { formatAmount, truncateAddress } from "@/lib/format";
 import { useAccount } from "wagmi";
@@ -67,7 +66,7 @@ function DoneInner() {
           )}
         </div>
 
-        <TrustBar />
+        {/* No TrustBar on Done per Ghost 8: success IS the trust signal. */}
 
         <a
           href={`https://basescan.org/tx/${hash}`}

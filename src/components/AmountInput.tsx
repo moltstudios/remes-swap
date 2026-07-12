@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatAmountInput } from "@/lib/format";
 
 export type AmountState =
   | "empty"
@@ -21,10 +22,11 @@ type Props = {
   onMax?: () => void;
   decimals?: number;
   label?: string;
+  muted?: boolean; // 90% opacity — for result fields where user doesn't type
 };
 
 /**
- * Amount input — bold display-size numerals. Token label on the right.
+ * Amount input — bold display-size numerals, auto-formatted with commas.
  * States: empty · typing · loading · quoted · error · success.
  */
 export function AmountInput({
@@ -38,11 +40,15 @@ export function AmountInput({
   onMax,
   decimals = 6,
   label,
+  muted,
 }: Props) {
   const [focused, setFocused] = useState(false);
 
   const fieldState =
     state === "error" ? "error" : focused ? "focused" : undefined;
+
+  // For input: show formatted (with commas). For change: pass clean digits.
+  const displayValue = formatAmountInput(value);
 
   return (
     <div className="field-card" data-state={fieldState}>
@@ -67,12 +73,15 @@ export function AmountInput({
           autoComplete="off"
           aria-label={label}
           placeholder={placeholder}
-          value={value}
+          value={displayValue}
           onChange={(e) => onChange(sanitize(e.target.value, decimals))}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           readOnly={readOnly}
-          className="amount-input flex-1 min-w-0"
+          className={
+            "amount-input flex-1 min-w-0" +
+            (muted ? " opacity-90" : "")
+          }
           data-state={state}
         />
         <div className="flex items-center gap-xs shrink-0 pb-1">
@@ -94,7 +103,8 @@ export function AmountInput({
 
 function sanitize(raw: string, decimals: number): string {
   if (!raw) return "";
-  let cleaned = raw.replace(/[^0-9.]/g, "");
+  // Strip commas (from pasted formatted values) before sanitizing
+  let cleaned = raw.replace(/,/g, "").replace(/[^0-9.]/g, "");
   const firstDot = cleaned.indexOf(".");
   if (firstDot !== -1) {
     cleaned =
@@ -105,7 +115,11 @@ function sanitize(raw: string, decimals: number): string {
     const [w, f = ""] = cleaned.split(".");
     cleaned = `${w}.${f.slice(0, decimals)}`;
   }
-  if (cleaned.length > 1 && cleaned.startsWith("0") && !cleaned.startsWith("0.")) {
+  if (
+    cleaned.length > 1 &&
+    cleaned.startsWith("0") &&
+    !cleaned.startsWith("0.")
+  ) {
     cleaned = cleaned.replace(/^0+/, "") || "0";
   }
   return cleaned;

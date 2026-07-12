@@ -5,11 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import { WalletButton } from "@/components/WalletButton";
 import { BigCTA } from "@/components/BigCTA";
-import { TrustBar } from "@/components/TrustBar";
 import { useI18n } from "@/lib/i18n";
 import { formatAmount, formatPercent } from "@/lib/format";
 import { useSwapExecution } from "@/hooks/useSwapExecution";
 import { BASE_TOKENS } from "@/lib/web3/contracts";
+import type { TxStage } from "@/hooks/useSwapExecution";
 
 const PLATFORM_FEE_PERCENT = 0.003;
 
@@ -30,7 +30,6 @@ function ConfirmInner() {
 
   const { stage, execute, reset } = useSwapExecution();
 
-  // Redirect to done on completion
   useEffect(() => {
     if (stage.kind === "complete") {
       router.push(
@@ -39,13 +38,14 @@ function ConfirmInner() {
     }
   }, [stage, router, from, to, amount, received]);
 
-  // Reset stage when leaving the page
   useEffect(() => {
     return () => reset();
   }, [reset]);
 
-  const fromAddress = from === "USDC" ? BASE_TOKENS.USDC.address : BASE_TOKENS.USDT.address;
-  const toAddress = to === "USDC" ? BASE_TOKENS.USDC.address : BASE_TOKENS.USDT.address;
+  const fromAddress =
+    from === "USDC" ? BASE_TOKENS.USDC.address : BASE_TOKENS.USDT.address;
+  const toAddress =
+    to === "USDC" ? BASE_TOKENS.USDC.address : BASE_TOKENS.USDT.address;
 
   const ctaState =
     stage.kind === "preparing" ||
@@ -64,6 +64,8 @@ function ConfirmInner() {
       ? "Esperando tu firma..."
       : stage.kind === "broadcasting-swap"
       ? "Enviando cambio..."
+      : stage.kind === "complete"
+      ? "Listo"
       : t.confirm.confirm;
 
   function handleConfirm() {
@@ -114,7 +116,8 @@ function ConfirmInner() {
           <span className="text-small text-ink/60">{t.confirm.backCta}</span>
         </div>
 
-        <TrustBar />
+        {/* Subtle 3-step indicator (per Ghost 7: small gray, active blue bold, connector dots static) */}
+        <SubtleProgress stage={stage} />
 
         <div>
           <h1 className="text-head text-ink">{t.confirm.title}</h1>
@@ -137,7 +140,7 @@ function ConfirmInner() {
             {t.confirm.youReceive}
           </p>
           <div className="flex items-baseline gap-sm mt-xs">
-            <span className="text-head font-bold tabular-nums text-ink leading-none">
+            <span className="text-head font-bold tabular-nums text-ink leading-none opacity-90">
               {formatAmount(received, 2)}
             </span>
             <span className="text-body font-semibold text-ink/70">{to}</span>
@@ -163,7 +166,7 @@ function ConfirmInner() {
           />
         </div>
 
-        {/* Non-custodial trust signal */}
+        {/* Single trust line (per Ghost 8: confirm has ONE trust line, not TrustBar) */}
         <div className="flex items-start gap-sm bg-accent/10 rounded-md p-md">
           <svg
             viewBox="0 0 24 24"
@@ -183,9 +186,6 @@ function ConfirmInner() {
           </p>
         </div>
 
-        {/* Stage indicator */}
-        <StageIndicator stage={stage} />
-
         {/* CTA */}
         <BigCTA state={ctaState} onClick={handleConfirm}>
           {ctaLabel}
@@ -201,6 +201,64 @@ function ConfirmInner() {
   );
 }
 
+/**
+ * SubtleProgress — 3 steps per Ghost spec:
+ * - 14px regular gray
+ * - Active step blue bold
+ * - Connector dots static (not animated)
+ * Steps: Revisar · Firmar · Listo
+ */
+function SubtleProgress({ stage }: { stage: TxStage }) {
+  // Map our internal stages to the 3 user-visible steps:
+  // 1 Revisar (idle)
+  // 2 Firmar (preparing/awaiting-approval/approval-confirmed/broadcasting-swap/swap-sent)
+  // 3 Listo (complete)
+  let active = 0;
+  if (
+    stage.kind === "preparing" ||
+    stage.kind === "awaiting-approval" ||
+    stage.kind === "approval-confirmed" ||
+    stage.kind === "broadcasting-swap" ||
+    stage.kind === "swap-sent"
+  ) {
+    active = 1;
+  } else if (stage.kind === "complete") {
+    active = 2;
+  }
+  const labels = ["Revisar", "Firmar", "Listo"];
+
+  return (
+    <ol
+      className="flex items-center justify-center gap-sm text-small"
+      aria-label="Pasos de la operación"
+    >
+      {labels.map((label, i) => {
+        const isActive = i === active;
+        const isDone = i < active;
+        return (
+          <li key={label} className="flex items-center gap-sm">
+            <span
+              className={
+                "tabular-nums " +
+                (isActive
+                  ? "text-primary font-bold"
+                  : isDone
+                  ? "text-ink/40 line-through"
+                  : "text-ink/40")
+              }
+            >
+              {i + 1} · {label}
+            </span>
+            {i < labels.length - 1 && (
+              <span className="text-ink/30" aria-hidden="true">·</span>
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 function Row({
   label,
   value,
@@ -212,51 +270,6 @@ function Row({
     <div className="flex items-center justify-between py-xs text-small">
       <span className="text-ink/60">{label}</span>
       <span className="text-ink font-medium tabular-nums">{value}</span>
-    </div>
-  );
-}
-
-function StageIndicator({ stage }: { stage: ReturnType<typeof useSwapExecution>["stage"] }) {
-  const stages = [
-    { key: "preparing", label: "Preparar" },
-    { key: "awaiting-approval", label: "Aprobar" },
-    { key: "broadcasting-swap", label: "Enviar" },
-    { key: "complete", label: "Listo" },
-  ];
-  const currentIdx = stages.findIndex((s) => s.key === stage.kind);
-  return (
-    <div className="flex items-center justify-between gap-xs" aria-live="polite">
-      {stages.map((s, i) => {
-        const active = i === currentIdx;
-        const done = i < currentIdx || stage.kind === "complete";
-        return (
-          <div
-            key={s.key}
-            className="flex-1 flex flex-col items-center gap-1"
-          >
-            <div
-              className={
-                "w-6 h-6 rounded-full flex items-center justify-center text-micro font-bold " +
-                (done
-                  ? "bg-success text-white"
-                  : active
-                  ? "bg-primary text-white animate-pulse"
-                  : "bg-ink/10 text-ink/40")
-              }
-            >
-              {done ? "✓" : i + 1}
-            </div>
-            <span
-              className={
-                "text-micro " +
-                (active || done ? "text-ink font-semibold" : "text-ink/40")
-              }
-            >
-              {s.label}
-            </span>
-          </div>
-        );
-      })}
     </div>
   );
 }

@@ -1,11 +1,16 @@
 "use client";
 
 type Props = {
+  /** True when the second token is in the "from" slot */
   reversed: boolean;
   onToggle: () => void;
   ariaLabel: string;
 };
 
+/**
+ * Direction toggle — ⇅ between From and To fields.
+ * Rotates 180° when direction is reversed (state-driven).
+ */
 export function DirectionToggle({ reversed, onToggle, ariaLabel }: Props) {
   return (
     <div className="flex justify-center -my-2xs relative z-10">

@@ -38,6 +38,7 @@ export function SwapCard() {
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
   const [quoteState, setQuoteState] = useState<QuoteState>("empty");
   const [quoteFetchedAt, setQuoteFetchedAt] = useState(0);
+  const [reversed, setReversed] = useState(false);
 
   const { data: fromBalance } = useBalance({
     address,
@@ -173,11 +174,12 @@ export function SwapCard() {
 
       {/* Direction toggle */}
       <DirectionToggle
-        reversed={false}
+        reversed={reversed}
         onToggle={() => {
           const prev = fromToken;
           setFromToken(toToken);
           setToToken(prev);
+          setReversed((r) => !r);
           setAmount("");
           setQuote(null);
           setQuoteState("empty");
@@ -191,6 +193,7 @@ export function SwapCard() {
         value={quote ? formatAmount(quote.expectedOutput, 2) : ""}
         onChange={() => {}}
         readOnly
+        muted
         state={
           quoteState === "loading"
             ? "loading"

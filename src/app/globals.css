@@ -50,6 +50,8 @@
   .amount-input {
     @apply w-full bg-transparent text-display font-bold text-ink
            placeholder:text-ink/30 tabular-nums focus:outline-none;
+    min-height: 60px;
+    line-height: 1.1;
   }
 
   .amount-input[data-state="error"] { @apply text-error; }
@@ -57,6 +59,7 @@
 
   .field-card {
     @apply bg-surface rounded-lg p-md transition-all duration-150;
+    min-height: 88px;
   }
 
   .field-card[data-state="focused"] {
