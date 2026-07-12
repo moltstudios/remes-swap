@@ -3,13 +3,6 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --background: 255 255 255;
-    --foreground: 14 17 25;
-    --muted: 247 248 250;
-    --border: 217 221 230;
-  }
-
   html {
     -webkit-text-size-adjust: 100%;
     text-rendering: optimizeLegibility;
@@ -18,75 +11,75 @@
   }
 
   body {
-    @apply bg-white text-ink-900 font-sans;
-    @apply text-body;
-    /* Mobile-first — generous tap targets, comfortable type */
+    @apply bg-bg text-ink font-sans text-body antialiased;
   }
 
-  /* Mobile-first — make sure inputs are sized for thumbs */
-  input[type="text"],
-  input[type="number"] {
-    font-size: 18px; /* prevents iOS zoom on focus */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
   }
 
-  /* Selection color */
   ::selection {
-    background-color: theme(colors.ink.900);
+    background-color: #0A4D8C;
     color: white;
   }
 }
 
 @layer components {
-  /* Banking-grade primary CTA — solid, no gradient */
-  .btn-primary {
-    @apply bg-ink-900 text-white rounded-pill px-6 py-4
-           font-semibold text-body
-           transition-all duration-150 ease-out
-           hover:bg-ink-800 active:scale-[0.98]
-           disabled:opacity-40 disabled:cursor-not-allowed
-           disabled:active:scale-100;
+  /* PRIMARY CTA — rest, hover, pressed, loading, disabled, error */
+  .cta-primary {
+    @apply w-full h-14 rounded-pill bg-primary text-white font-bold text-subhead
+           transition-all duration-150 ease-smooth
+           hover:bg-primary-hover
+           active:bg-primary-pressed active:scale-[0.98]
+           disabled:bg-surface disabled:text-ink/40 disabled:cursor-not-allowed
+           disabled:active:scale-100
+           focus-visible:shadow-focus focus-visible:outline-none;
   }
 
-  .btn-secondary {
-    @apply bg-surface-alt text-ink-900 rounded-pill px-6 py-3
-           font-medium text-small
-           transition-colors duration-150
-           hover:bg-ink-100;
+  .cta-primary[data-state="loading"] { @apply cursor-wait; }
+  .cta-primary[data-state="error"] { @apply bg-error text-white; }
+
+  .cta-secondary {
+    @apply w-full h-12 rounded-pill bg-surface text-ink font-semibold text-body
+           transition-colors duration-150 hover:bg-surface/80
+           focus-visible:shadow-focus focus-visible:outline-none;
   }
 
-  .btn-ghost {
-    @apply text-ink-600 rounded-pill px-4 py-2
-           font-medium text-small
-           transition-colors duration-150
-           hover:bg-surface-alt;
+  .amount-input {
+    @apply w-full bg-transparent text-display font-bold text-ink
+           placeholder:text-ink/30 tabular-nums focus:outline-none;
   }
 
-  .card {
-    @apply bg-white rounded-card shadow-card border border-ink-100;
+  .amount-input[data-state="error"] { @apply text-error; }
+  .amount-input[data-state="success"] { @apply text-success; }
+
+  .field-card {
+    @apply bg-surface rounded-lg p-md transition-all duration-150;
   }
 
-  .input-amount {
-    @apply w-full bg-transparent
-           text-[44px] leading-none font-semibold
-           text-ink-900 placeholder:text-ink-300
-           focus:outline-none tabular-nums;
+  .field-card[data-state="focused"] {
+    @apply ring-2 ring-accent ring-offset-2 ring-offset-bg bg-bg;
+  }
+
+  .field-card[data-state="error"] {
+    @apply ring-2 ring-error ring-offset-2 ring-offset-bg bg-bg;
+  }
+
+  .big-number {
+    @apply text-display font-bold text-ink tabular-nums leading-none;
   }
 }
 
-/* Hide number input spinners */
-input[type="number"]::-webkit-outer-spin-button,
-input[type="number"]::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-input[type="number"] {
-  -moz-appearance: textfield;
-}
-
-/* Safe area for notched phones */
-.safe-bottom {
-  padding-bottom: env(safe-area-inset-bottom);
-}
-.safe-top {
-  padding-top: env(safe-area-inset-top);
+@layer utilities {
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+  .safe-top { padding-top: env(safe-area-inset-top); }
+  .tabular { font-variant-numeric: tabular-nums; }
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] { -moz-appearance: textfield; }
 }

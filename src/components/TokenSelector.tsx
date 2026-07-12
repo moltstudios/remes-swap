@@ -34,51 +34,53 @@ export function TokenSelector({
         type="button"
         disabled={disabled}
         onClick={() => setOpen(true)}
+        data-state={open ? "open" : "rest"}
         className={clsx(
-          "flex items-center gap-2 px-3 py-2 rounded-pill",
-          "bg-surface-alt hover:bg-ink-100 transition-colors",
+          "flex items-center gap-xs h-10 px-sm rounded-pill bg-surface",
+          "font-semibold text-body text-ink",
+          "hover:bg-surface/80 transition-colors",
+          "focus-visible:shadow-focus focus-visible:outline-none",
           "disabled:opacity-50 disabled:cursor-not-allowed"
         )}
       >
         <TokenLogo symbol={selected.symbol} size="sm" />
-        <span className="font-semibold text-ink-900">{selected.symbol}</span>
-        <ChevronDown className="w-4 h-4 text-ink-500" />
+        <span>{selected.symbol}</span>
+        <ChevronDown className="w-4 h-4 text-ink/60" />
       </button>
 
       {open && (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-ink-900/40 backdrop-blur-sm"
-          onClick={() => setOpen(false)}
-        >
-          <div
-            className="bg-white w-full sm:w-96 sm:rounded-card rounded-t-card sm:my-8 p-5 shadow-elevated"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-heading text-ink-900 mb-4">
-              {t.swap.selectToken}
-            </h3>
-            <div className="space-y-1">
-              {filtered.map((token) => (
-                <button
-                  key={token.address}
-                  onClick={() => {
-                    onChange(token);
-                    setOpen(false);
-                  }}
-                  className="w-full flex items-center gap-3 p-3 rounded-card hover:bg-surface-alt transition-colors"
-                >
-                  <TokenLogo symbol={token.symbol} />
-                  <div className="text-left">
-                    <p className="font-semibold text-ink-900">
-                      {token.symbol}
-                    </p>
-                    <p className="text-small text-ink-500">{token.name}</p>
-                  </div>
-                </button>
-              ))}
+        <>
+          <button
+            className="fixed inset-0 z-40 bg-ink/40 backdrop-blur-sm cursor-default animate-tick-in"
+            onClick={() => setOpen(false)}
+            aria-label={t.common.close}
+          />
+          <div className="fixed inset-x-0 bottom-0 z-50 sm:inset-0 sm:flex sm:items-center sm:justify-center pointer-events-none">
+            <div className="bg-bg rounded-t-lg sm:rounded-lg w-full sm:w-96 p-lg shadow-card pointer-events-auto animate-sheet-up safe-bottom">
+              <h3 className="text-subhead font-bold text-ink mb-md">
+                {t.swap.selectToken}
+              </h3>
+              <div className="space-y-xs">
+                {filtered.map((token) => (
+                  <button
+                    key={token.address}
+                    onClick={() => {
+                      onChange(token);
+                      setOpen(false);
+                    }}
+                    className="w-full flex items-center gap-sm p-md rounded-md bg-surface hover:bg-surface/80 transition-colors focus-visible:shadow-focus focus-visible:outline-none"
+                  >
+                    <TokenLogo symbol={token.symbol} />
+                    <div className="text-left">
+                      <p className="font-semibold text-ink">{token.symbol}</p>
+                      <p className="text-small text-ink/60">{token.name}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </>
   );
@@ -94,6 +96,7 @@ function ChevronDown({ className }: { className?: string }) {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
+      aria-hidden="true"
     >
       <polyline points="6 9 12 15 18 9" />
     </svg>

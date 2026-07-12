@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Web3Provider } from "@/providers/Web3Provider";
-import { AppShell } from "@/components/AppShell";
 import { ServiceWorkerRegistrar } from "@/components/ServiceWorkerRegistrar";
 
 const inter = Inter({
@@ -33,7 +32,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   viewportFit: "cover",
-  themeColor: "#0E1119",
+  themeColor: "#0A4D8C",
 };
 
 export default function RootLayout({
@@ -43,9 +42,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es" className={inter.variable}>
-      <body className="min-h-screen bg-white">
+      <body className="min-h-screen bg-bg text-ink">
         <Web3Provider>
-          <AppShell>{children}</AppShell>
+          {children}
           <ServiceWorkerRegistrar />
         </Web3Provider>
       </body>
