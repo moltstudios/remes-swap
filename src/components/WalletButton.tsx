@@ -214,9 +214,9 @@ function getErrorMessage(error: Error): string {
     const isMobile = typeof navigator !== "undefined" &&
       (/iPad|iPhone|iPod/.test(navigator.userAgent) || /Android/.test(navigator.userAgent));
     if (isMobile) {
-      return "En móvil, abrí esta página dentro de la app de MetaMask (pestaña Navegador) o usá WalletConnect con QR.";
+      return "En móvil, abre esta página dentro de la app de MetaMask (pestaña Navegador) o usa WalletConnect con QR.";
     }
-    return "Billetera no encontrada. Instalá la extensión de MetaMask o usá WalletConnect con QR.";
+    return "Billetera no encontrada. Instala la extensión de MetaMask o usa WalletConnect con QR.";
   }
   if (msg.includes("rejected")) {
     return "Conexión rechazada por el usuario.";

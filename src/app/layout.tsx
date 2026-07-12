@@ -14,7 +14,7 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Remes — El dólar que funciona en todas partes",
   description:
-    "Intercambiá USDC y USDT al instante sobre Base. Sin custodia, sin fronteras, en español.",
+    "Intercambia USDC y USDT al instante sobre Base. Sin custodia, sin fronteras, en español.",
   applicationName: "Remes Swap",
   manifest: "/manifest.json",
   appleWebApp: {

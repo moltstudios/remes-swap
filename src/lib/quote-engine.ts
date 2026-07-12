@@ -134,19 +134,34 @@ export interface QuoteResult {
 // HELPERS
 // ============================================================
 
+// Reverse lookup: address (lowercase) → symbol
+const ADDRESS_TO_SYMBOL: Record<string, string> = {}
+for (const [sym, cfg] of Object.entries(TOKENS)) {
+  ADDRESS_TO_SYMBOL[cfg.address.toLowerCase()] = sym
+}
+
 function resolveToken(identifier: string): TokenConfig {
-  const upper = identifier.toUpperCase()
+  const trimmed = identifier.trim()
+  const upper = trimmed.toUpperCase()
   if (TOKENS[upper]) return TOKENS[upper]
 
-  if (identifier.startsWith('0x') && identifier.length === 42) {
-    return { address: identifier, decimals: 6 }
+  if (trimmed.toLowerCase().startsWith('0x') && trimmed.length === 42) {
+    // Known address? Return the configured token (ensures pool lookup works)
+    const sym = ADDRESS_TO_SYMBOL[trimmed.toLowerCase()]
+    if (sym) return TOKENS[sym]
+
+    // Unknown address — assume 6 decimals (standard for stablecoins)
+    return { address: trimmed, decimals: 6 }
   }
 
   throw new Error(`Unknown token: ${identifier}`)
 }
 
 function getPoolKey(a: string, b: string): string {
-  const symbols = [a.toUpperCase(), b.toUpperCase()].sort()
+  // Resolve addresses back to symbols for pool lookup
+  const symA = ADDRESS_TO_SYMBOL[a.toLowerCase()] ?? a.toUpperCase()
+  const symB = ADDRESS_TO_SYMBOL[b.toLowerCase()] ?? b.toUpperCase()
+  const symbols = [symA, symB].sort()
   return `${symbols[0]}-${symbols[1]}`
 }
 
