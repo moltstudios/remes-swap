@@ -50,6 +50,56 @@ const KNOWN_POOLS: Record<string, { fee: number; address: string }[]> = {
   ],
 }
 
+// Pool state cache: address -> { sqrtPriceX96, zeroForOne, expiresAt }
+// Pool prices don't change second-to-second; 10s cache cuts RPC calls by ~99%
+// and protects us from public RPC rate limits.
+const POOL_CACHE_TTL_MS = 10_000
+const poolCache = new Map<string, { sqrtPriceX96: bigint; zeroForOne: boolean; expiresAt: number }>()
+
+async function getPoolState(
+  provider: ethers.JsonRpcProvider,
+  poolAddress: string,
+  tokenInAddress: string
+): Promise<{ sqrtPriceX96: bigint; zeroForOne: boolean } | null> {
+  const cached = poolCache.get(poolAddress)
+  if (cached && cached.expiresAt > Date.now()) {
+    return { sqrtPriceX96: cached.sqrtPriceX96, zeroForOne: cached.zeroForOne }
+  }
+
+  const pool = new ethers.Contract(poolAddress, POOL_ABI, provider)
+  const [token0, slot0] = await Promise.all([pool.token0(), pool.slot0()])
+  const sqrtPriceX96 = slot0[0]
+  const zeroForOne = token0.toLowerCase() === tokenInAddress.toLowerCase()
+
+  poolCache.set(poolAddress, {
+    sqrtPriceX96,
+    zeroForOne,
+    expiresAt: Date.now() + POOL_CACHE_TTL_MS,
+  })
+  return { sqrtPriceX96, zeroForOne }
+}
+
+// Retry with exponential backoff for RPC rate limits
+export async function withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
+  let lastErr: unknown
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastErr = err
+      const msg = err instanceof Error ? err.message : String(err)
+      const isRateLimit =
+        msg.includes('missing revert data') ||
+        msg.includes('CALL_EXCEPTION') ||
+        msg.includes('rate limit') ||
+        msg.includes('429')
+      if (!isRateLimit || i === retries) throw err
+      await new Promise((r) => setTimeout(r, 100 * 2 ** i))
+    }
+  }
+  throw lastErr
+}
+
 const POOL_ABI = [
   'function slot0() external view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)',
   'function liquidity() external view returns (uint128)',
@@ -169,15 +219,13 @@ export async function getQuote(input: QuoteInput): Promise<QuoteResult> {
 
   for (const poolInfo of pools) {
     try {
-      const pool = new ethers.Contract(poolInfo.address, POOL_ABI, provider)
+      const state = await withRetry(() =>
+        getPoolState(provider, poolInfo.address, tokenIn.address)
+      )
+      if (!state) continue
 
-      const [token0, slot0] = await Promise.all([
-        pool.token0(),
-        pool.slot0(),
-      ])
-
-      const sqrtPriceX96 = slot0[0]
-      const zeroForOne = token0.toLowerCase() === tokenIn.address.toLowerCase()
+      const sqrtPriceX96 = state.sqrtPriceX96
+      const zeroForOne = state.zeroForOne
 
       // Apply pool fee
       const feeAmount = (amountIn * BigInt(poolInfo.fee)) / 1_000_000n
@@ -188,7 +236,11 @@ export async function getQuote(input: QuoteInput): Promise<QuoteResult> {
       if (!bestResult || amountOut > bestResult.amountOut) {
         bestResult = { amountOut, poolFee: poolInfo.fee }
       }
-    } catch {
+    } catch (poolErr) {
+      // Silent skip — log only at debug level to avoid noise on rate limits
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(`[getQuote] pool ${poolInfo.address} (fee=${poolInfo.fee}) failed:`, poolErr instanceof Error ? poolErr.message : poolErr)
+      }
       continue // skip this pool
     }
   }

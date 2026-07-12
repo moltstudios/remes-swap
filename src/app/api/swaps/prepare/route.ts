@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ethers } from 'ethers'
 import { z } from 'zod'
-import { getQuote } from '@/lib/quote-engine'
+import { getQuote, withRetry } from '@/lib/quote-engine'
 import { SWAP_ROUTER_ABI, ERC20_ABI } from '@/lib/abis'
 
 // ============================================================
@@ -86,6 +86,7 @@ export async function POST(request: NextRequest) {
 
     // Estimate gas for both steps (helps users understand cost before signing)
     let gasEstimate = { approve: '65000', swap: '180000' } // sensible defaults
+    let gasEstimationError = ''
     try {
       const [approveGas, swapGas] = await Promise.all([
         provider.estimateGas({ to: tokenIn, data: approveData }),
@@ -102,13 +103,14 @@ export async function POST(request: NextRequest) {
       }
     } catch (gasErr) {
       // Gas estimation can fail on simulation — fall back to defaults
-      console.warn('[prepare] Gas estimation failed, using defaults:', gasErr)
+      gasEstimationError = gasErr instanceof Error ? gasErr.message : 'unknown'
+      console.warn('[prepare] Gas estimation failed, using defaults:', gasEstimationError)
     }
 
     // Get current gas price for USD estimate
     let gasPriceWei: bigint = 0n
     try {
-      const feeData = await provider.getFeeData()
+      const feeData = await withRetry(() => provider.getFeeData())
       gasPriceWei = feeData.gasPrice ?? feeData.maxFeePerGas ?? 0n
     } catch {}
 
@@ -143,6 +145,7 @@ export async function POST(request: NextRequest) {
     console.error('[prepare] Error:', message)
     const safeMessage =
       message.includes('No liquidity') ||
+      message.includes('No liquidity pool') ||
       message.includes('must be different') ||
       message.includes('must be greater') ||
       message.includes('Unknown token') ||
