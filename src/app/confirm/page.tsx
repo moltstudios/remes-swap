@@ -20,8 +20,10 @@ function ConfirmInner() {
 
   const from = (search.get("from") ?? "USDC") as "USDC" | "USDT";
   const to = (search.get("to") ?? "USDT") as "USDC" | "USDT";
-  const amount = search.get("amount") ?? "0";
-  const received = search.get("received") ?? "0";
+  // Strip commas at the boundary — URL params from /swap are raw numbers,
+  // but defensive in case someone hand-shares a link or bookmarks it.
+  const amount = (search.get("amount") ?? "0").replace(/,/g, "");
+  const received = (search.get("received") ?? "0").replace(/,/g, "");
 
   const sendNum = parseFloat(amount) || 0;
   const receiveNum = parseFloat(received) || 0;

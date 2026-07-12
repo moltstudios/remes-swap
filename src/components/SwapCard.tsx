@@ -61,10 +61,21 @@ export function SwapCard() {
     const handle = setTimeout(async () => {
       setQuoteState("loading");
       try {
+        // Defensive: strip commas + whitespace before crossing API boundary.
+        // Neo's /api/quote Zod regex rejects "1,000.50". The AmountInput
+        // already sanitizes on type, but the boundary check guarantees we
+        // never leak a formatted value to the backend even if state source
+        // changes (URL paste, future code paths, etc).
+        const cleanAmount = amount.replace(/,/g, "").trim();
+        if (!cleanAmount || parseFloat(cleanAmount) <= 0) {
+          setQuote(null);
+          setQuoteState("empty");
+          return;
+        }
         const q = await fetchQuote({
           sourceAsset: fromToken.address,
           destAsset: toToken.address,
-          amount,
+          amount: cleanAmount,
           sourceDecimals: fromToken.decimals,
           slippageBps: 50,
         });
@@ -140,8 +151,11 @@ export function SwapCard() {
 
   function handleCta() {
     if (ctaDisabled || !quote) return;
+    // Strip commas at the routing boundary too — /confirm and useSwapExecution
+    // both expect the raw human-readable number ("1000.50"), not "1,000.50".
+    const cleanAmount = amount.replace(/,/g, "").trim();
     router.push(
-      `/confirm?from=${fromToken.symbol}&to=${toToken.symbol}&amount=${amount}&received=${quote.expectedOutput}`
+      `/confirm?from=${fromToken.symbol}&to=${toToken.symbol}&amount=${cleanAmount}&received=${quote.expectedOutput}`
     );
   }
 
