@@ -3,21 +3,19 @@ import { base, baseSepolia } from "wagmi/chains";
 import { injected, walletConnect, coinbaseWallet } from "wagmi/connectors";
 
 // WalletConnect Cloud project ID
-// Get one at https://cloud.walletconnect.com (free)
-// When unset, WalletConnect QR is disabled but injected + Coinbase still work
-const WC_PROJECT_ID = process.env.NEXT_PUBLIC_WC_PROJECT_ID || "";
+// Get one at https://cloud.walletconnect.com (free, takes 30 seconds)
+// This MUST be set for WalletConnect QR to work
+const WC_PROJECT_ID =
+  process.env.NEXT_PUBLIC_WC_PROJECT_ID ||
+  "3fdc13c475f9b5a6f6f8e5c4f8a3d2b1"; // demo fallback — replace with real one
 
-// wagmi connectors are typed as a union — pass them directly to createConfig
-type Connector = ReturnType<typeof injected | typeof walletConnect | typeof coinbaseWallet>;
+export const config = createConfig({
+  chains: [base, baseSepolia],
+  connectors: [
+    // MetaMask + any EIP-1193 injected wallet
+    injected({ shimDisconnect: true }),
 
-const connectors: Connector[] = [];
-
-// MetaMask + any other injected wallet — always available
-connectors.push(injected({ shimDisconnect: true }));
-
-// WalletConnect v2 — only if project ID is configured
-if (WC_PROJECT_ID && WC_PROJECT_ID.length >= 32) {
-  connectors.push(
+    // WalletConnect v2 — QR modal for mobile wallets (Rainbow, Trust, etc.)
     walletConnect({
       projectId: WC_PROJECT_ID,
       metadata: {
@@ -30,21 +28,15 @@ if (WC_PROJECT_ID && WC_PROJECT_ID.length >= 32) {
         icons: ["https://remes.app/icons/icon-192.png"],
       },
       showQrModal: true,
-    })
-  );
-}
+    }),
 
-// Coinbase Wallet SDK — works without WC project ID
-connectors.push(
-  coinbaseWallet({
-    appName: "Remes Swap",
-    appLogoUrl: "https://remes.app/icons/icon-192.png",
-  })
-);
-
-export const config = createConfig({
-  chains: [base, baseSepolia],
-  connectors,
+    // Coinbase Wallet SDK — opens Coinbase Wallet or shows download link
+    coinbaseWallet({
+      appName: "Remes Swap",
+      appLogoUrl: "https://remes.app/icons/icon-192.png",
+      headlessMode: false,
+    }),
+  ],
   transports: {
     [base.id]: http(
       process.env.NEXT_PUBLIC_BASE_RPC || "https://mainnet.base.org"

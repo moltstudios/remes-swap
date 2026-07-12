@@ -173,7 +173,21 @@ export function WalletButton({ variant = "full" }: Props) {
             </div>
 
             {error && (
-              <p className="mt-4 text-small text-red-600">{error.message}</p>
+              <div className="mt-4 p-3 rounded-card bg-red-50 border border-red-200">
+                <p className="text-small text-red-700 font-medium">
+                  {getErrorMessage(error)}
+                </p>
+                {error.message?.includes("Provider not found") && (
+                  <a
+                    href="https://www.coinbase.com/wallet/downloads"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block mt-1 text-micro text-red-500 underline"
+                  >
+                    Descargar Coinbase Wallet →
+                  </a>
+                )}
+              </div>
             )}
 
             <button
@@ -197,7 +211,24 @@ function getConnectorName(id: string): string {
       return "Coinbase Wallet";
     case "walletConnect":
       return "WalletConnect";
+    case "walletConnectSDK":
+      return "WalletConnect";
     default:
       return id;
   }
+}
+
+function getErrorMessage(error: Error): string {
+  const msg = error.message || "";
+  if (msg.includes("Provider not found") || msg.includes("provider not found")) {
+    return "Billetera no encontrada. Instalá la extensión o usá WalletConnect con QR.";
+  }
+  if (msg.includes("rejected") || msg.includes("User rejected")) {
+    return "Conexión rechazada por el usuario.";
+  }
+  if (msg.includes("connector not found")) {
+    return "Conector no disponible. Recargá la página e intentá de nuevo.";
+  }
+  // Truncate long errors
+  return msg.length > 100 ? msg.slice(0, 100) + "..." : msg;
 }
