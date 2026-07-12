@@ -47,6 +47,11 @@ export function WalletPickerSheet({ open, onClose }: Props) {
     if (status === "pending") setTimedOut(false);
   }, [status]);
 
+  // Dedupe connectors by id — prevents duplicate wallet entries
+  const uniqueConnectors = connectors.filter(
+    (c, i, arr) => arr.findIndex((c2) => c2.id === c.id) === i
+  );
+
   if (!mounted || !open) return null;
   const connecting = status === "pending";
   const isIOS =
@@ -168,7 +173,7 @@ export function WalletPickerSheet({ open, onClose }: Props) {
 
         {/* Connectors list */}
         <div className="px-lg space-y-xs">
-          {connectors.map((c) => (
+          {uniqueConnectors.map((c) => (
             <ConnectorButton
               key={c.uid}
               connector={c}
@@ -351,6 +356,20 @@ function getWalletBrand(id: string, name?: string): Brand {
  */
 function getConnectorError(error: Error): string {
   const msg = error.message || "";
+  // iOS Brave phantom "MetaMask" — internal RPC error
+  if (msg.includes("An internal error has occurred")) {
+    return "Tu billetera no respondió. Prueba con otra opción o abre esta página dentro de la app de MetaMask en iPhone.";
+  }
+  // Brave wallet locked / undefined response crash
+  if (
+    msg.includes("undefined is not an object") ||
+    msg.includes("Cannot read properties of undefined")
+  ) {
+    return "Tu billetera no respondió. Desbloquéala e intenta de nuevo.";
+  }
+  if (msg.includes("connector not found")) {
+    return "Conector no disponible. Recarga la página e intenta de nuevo.";
+  }
   if (msg.includes("Provider not found") || msg.includes("provider not found")) {
     return "Billetera no encontrada. Instala la extensión o usa WalletConnect con QR.";
   }

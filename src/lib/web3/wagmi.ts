@@ -11,53 +11,68 @@ const WC_PROJECT_ID = process.env.NEXT_PUBLIC_WC_PROJECT_ID || "";
 const hasValidWCId = WC_PROJECT_ID.length >= 32;
 
 /**
- * Custom Brave target — wagmi v2's injected targetMap doesn't include
- * Brave, so we hand-roll a Target object that walks window.ethereum
- * (single provider or EIP-6963 multi-provider), filters by
- * `isBraveWallet`, and labels it 'braveWallet' so the picker maps
- * it correctly. Falls back to undefined (silent — Brave just won't
- * show as an option if not installed).
+ * Detect the injected EIP-1193 provider.
+ *
+ * Brave browser ships a built-in wallet that shadows `window.ethereum`.
+ * Brave sets BOTH `isBraveWallet=true` AND `isMetaMask=true` for backward
+ * compatibility with dApps expecting MetaMask.
+ *
+ * Therefore: check `isBraveWallet` FIRST. If present, it's Brave —
+ * never MetaMask, regardless of the `isMetaMask` flag.
+ *
+ * When locked, Brave returns `undefined` from `eth_requestAccounts`,
+ * which crashes wagmi v2's `injected()` connector on `.map()`.
  */
-const braveTarget = (): unknown => {
+function getInjectedTarget() {
   if (typeof window === "undefined") return undefined;
-  const eth = (window as unknown as { ethereum?: unknown }).ethereum as
-    | undefined
+
+  const eth = window.ethereum as
     | {
-        providers?: Array<{ isBraveWallet?: boolean }>;
+        isMetaMask?: boolean;
         isBraveWallet?: boolean;
-      };
+        providers?: Array<{
+          isMetaMask?: boolean;
+          isBraveWallet?: boolean;
+        }>;
+      }
+    | undefined;
+
   if (!eth) return undefined;
-  if (Array.isArray(eth.providers)) {
-    return eth.providers.find((p) => p?.isBraveWallet);
+
+  // EIP-5749: multiple injected providers (desktop with multiple extensions)
+  // Look for a REAL MetaMask (not Brave pretending to be MetaMask)
+  if (eth.providers?.length) {
+    const mm = eth.providers.find((p) => p.isMetaMask && !p.isBraveWallet);
+    if (mm) {
+      return { id: "isMetaMask", name: "MetaMask", provider: mm as any };
+    }
   }
+
+  // ⚠️ Brave check MUST come before MetaMask check.
+  // Brave sets both isBraveWallet=true AND isMetaMask=true.
+  // If we check MetaMask first, Brave gets misidentified as MetaMask.
   if (eth.isBraveWallet) {
-    return (window as unknown as { ethereum: unknown }).ethereum;
+    return { id: "isBraveWallet", name: "Brave Wallet", provider: eth as any };
   }
-  return undefined;
-};
+
+  // Real MetaMask (desktop extension, not Brave)
+  if (eth.isMetaMask) {
+    return { id: "isMetaMask", name: "MetaMask", provider: eth as any };
+  }
+
+  // Unknown injected provider
+  return { id: "injected" as const, name: "Browser Wallet", provider: eth as any };
+}
 
 export const config = createConfig({
   chains: [base, baseSepolia],
   connectors: [
-    // Generic injected — covers any EIP-6963 / EIP-1193 wallet not listed
-    // explicitly below (Rabby, Phantom, Frame, …). Renders as
-    // 'Billetera del navegador' with the MetaMask tile by default.
-    injected({ shimDisconnect: true }),
-
-    // Explicit MetaMask target — wagmi resolves this to its metaMask
-    // targetMap entry which uses the canonical id 'metaMask'. Labeled
-    // + iconed correctly via getWalletBrand('metaMask').
+    // Single injected connector with explicit provider detection.
+    // Prevents Brave's locked wallet from crashing wagmi's connector
+    // and correctly identifies Brave vs MetaMask (Brave sets both flags).
     injected({
       shimDisconnect: true,
-      target: "metaMask",
-    }),
-
-    // Explicit Brave connector — has `isBraveWallet` set on
-    // window.ethereum (single provider or EIP-6963 multi-provider).
-    // Falls back silently if Brave isn't installed (no UI noise).
-    injected({
-      shimDisconnect: true,
-      target: braveTarget as never,
+      target: getInjectedTarget,
     }),
 
     // WalletConnect v2 — only if real project ID is configured
@@ -88,12 +103,17 @@ export const config = createConfig({
   ],
   transports: {
     [base.id]: http(
-      process.env.NEXT_PUBLIC_BASE_RPC || "https://mainnet.base.org"
+      (process.env.NEXT_PUBLIC_BASE_RPC || "https://mainnet.base.org").trim()
     ),
     [baseSepolia.id]: http(
-      process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC || "https://sepolia.base.org"
+      (process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC || "https://sepolia.base.org").trim()
     ),
   },
+  // Disable EIP-6963 multi-provider discovery — we use explicit connector
+  // targeting in getInjectedTarget(). Without this, wagmi discovers every
+  // injected provider (including Brave pretending to be MetaMask) and creates
+  // separate connectors for each, resulting in 5+ wallet entries on iOS Brave.
+  multiInjectedProviderDiscovery: false,
   ssr: true,
 });
 
