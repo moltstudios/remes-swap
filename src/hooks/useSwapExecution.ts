@@ -114,22 +114,55 @@ export function useSwapExecution() {
         const approveStep = prep.steps[0];
         const swapStep = prep.steps[1];
 
-        // 1. Approve
-        setStage({ kind: "awaiting-approval", txHash: "" });
-        const approveTx = await eth.request({
-          method: "eth_sendTransaction",
-          params: [
-            {
-              from: address,
-              to: approveStep.to,
-              data: approveStep.data,
-              value: "0x0",
-            },
-          ],
-        });
-        setStage({ kind: "awaiting-approval", txHash: approveTx });
+        // Check allowance — skip approve if Router already has enough
+        const amountInRaw = BigInt(
+          // parse amount to raw units
+          (() => {
+            const [w, f = ""] = params.amount.split(".");
+            const padded = (f + "0".repeat(6)).slice(0, 6);
+            return (BigInt(w || "0") * 10n ** 6n + BigInt(padded || "0")).toString();
+          })()
+        );
 
-        await waitForTx(approveTx);
+        let needsApprove = true;
+        try {
+          const allowanceRes = await fetch("/api/token/allowance", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              token: params.fromAddress,
+              owner: address,
+              spender: prep.routerAddress,
+            }),
+          });
+          if (allowanceRes.ok) {
+            const { allowance } = await allowanceRes.json();
+            if (BigInt(allowance) >= amountInRaw) {
+              needsApprove = false;
+            }
+          }
+        } catch {
+          // If check fails, default to sending approve (safe)
+        }
+
+        // 1. Approve (only if needed)
+        if (needsApprove) {
+          setStage({ kind: "awaiting-approval", txHash: "" });
+          const approveTx = await eth.request({
+            method: "eth_sendTransaction",
+            params: [
+              {
+                from: address,
+                to: approveStep.to,
+                data: approveStep.data,
+                value: "0x0",
+              },
+            ],
+          });
+          setStage({ kind: "awaiting-approval", txHash: approveTx });
+
+          await waitForTx(approveTx);
+        }
         setStage({ kind: "approval-confirmed" });
 
         // 2. Swap
