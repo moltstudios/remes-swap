@@ -185,6 +185,19 @@ export function WalletPickerSheet({ open, onClose }: Props) {
 function getConnectorName(id: string): string {
   switch (id) {
     case "injected":
+      // Detect the actual injected provider at runtime
+      if (typeof window !== "undefined") {
+        const eth = window.ethereum as
+          | { isMetaMask?: boolean; isBraveWallet?: boolean; providers?: Array<{ isMetaMask?: boolean; isBraveWallet?: boolean }> }
+          | undefined;
+        // EIP-5749: multiple providers — check if MetaMask is among them
+        if (eth?.providers?.length) {
+          const mm = eth.providers.find((p) => p.isMetaMask && !p.isBraveWallet);
+          if (mm) return "MetaMask";
+        }
+        if (eth?.isBraveWallet && !eth?.isMetaMask) return "Brave Wallet";
+        if (eth?.isMetaMask) return "MetaMask";
+      }
       return "Billetera del navegador";
     case "coinbaseWalletSDK":
       return "Coinbase Wallet";
@@ -203,6 +216,13 @@ function getConnectorName(id: string): string {
  */
 function getConnectorError(error: Error): string {
   const msg = error.message || "";
+  // Brave wallet locked / undefined response crash
+  if (
+    msg.includes("undefined is not an object") ||
+    msg.includes("Cannot read properties of undefined")
+  ) {
+    return "Tu billetera no respondió. Desbloquéala e intenta de nuevo.";
+  }
   if (msg.includes("Provider not found") || msg.includes("provider not found")) {
     return "Billetera no encontrada. Instala la extensión o usa WalletConnect con QR.";
   }
