@@ -110,6 +110,7 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
+    console.error('[prepare] Error:', message, 'stack:', error instanceof Error ? error.stack : '')
     const safeMessage =
       message.includes('No liquidity') ||
       message.includes('must be different') ||
@@ -119,7 +120,7 @@ export async function POST(request: NextRequest) {
         ? message
         : 'Failed to prepare swap'
 
-    return NextResponse.json({ error: safeMessage }, { status: 500 })
+    return NextResponse.json({ error: safeMessage, debug: message }, { status: 500 })
   }
 }
 
