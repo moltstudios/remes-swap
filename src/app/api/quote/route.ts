@@ -86,5 +86,5 @@ export async function POST(request: NextRequest) {
 
 // Health check
 export async function GET() {
-  return NextResponse.json({ status: 'ok', service: 'ciento-quote-engine' })
+  return NextResponse.json({ status: 'ok', service: 'remes-quote-engine' })
 }

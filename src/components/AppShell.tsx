@@ -90,6 +90,7 @@ function BottomNav() {
 function Logo({ className }: { className?: string }) {
   // Remes mark — "R" monogram on a banking-grade dark square.
   // The descender of the R nods to the trail of a money transfer.
+  // Remes mark — a clean "100" inspired by the codename (cien = 100)
   return (
     <svg
       className={className}

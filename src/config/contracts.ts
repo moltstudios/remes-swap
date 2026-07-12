@@ -1,5 +1,5 @@
 /**
- * Contract addresses & config for Ciento Swap on Base chain
+ * Contract addresses & config for Remes Swap on Base chain
  */
 
 export const CONTRACTS = {

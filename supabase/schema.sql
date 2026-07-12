@@ -1,5 +1,5 @@
 -- ============================================================
--- CIENTO SWAP — Phase 1 Schema
+-- REMES SWAP — Phase 1 Schema
 -- Deploy: paste into Supabase SQL Editor or run via supabase CLI
 -- ============================================================
 
@@ -122,7 +122,7 @@ CREATE TABLE IF NOT EXISTS fiat_transactions (
 CREATE TABLE IF NOT EXISTS reserve_attestations (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   timestamp TIMESTAMPTZ DEFAULT NOW(),
-  total_cusd_supply DECIMAL(20,8) NOT NULL,
+  total_rmusd_supply DECIMAL(20,8) NOT NULL,
   treasury_holdings DECIMAL(20,2) NOT NULL,
   cash_holdings DECIMAL(20,2) NOT NULL,
   total_reserves DECIMAL(20,2) NOT NULL,
@@ -136,9 +136,9 @@ CREATE TABLE IF NOT EXISTS reserve_attestations (
 );
 
 -- ============================================================
--- CUSD EVENTS
+-- RMUSD EVENTS
 -- ============================================================
-CREATE TABLE IF NOT EXISTS cusd_events (
+CREATE TABLE IF NOT EXISTS rmusd_events (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   type TEXT NOT NULL,
   amount DECIMAL(20,8) NOT NULL,
@@ -207,7 +207,7 @@ CREATE INDEX IF NOT EXISTS idx_transactions_reference_id ON transactions(referen
 CREATE INDEX IF NOT EXISTS idx_fiat_transactions_user_id ON fiat_transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_liquidity_positions_user_id ON liquidity_positions(user_id);
 CREATE INDEX IF NOT EXISTS idx_liquidity_positions_pool_id ON liquidity_positions(pool_id);
-CREATE INDEX IF NOT EXISTS idx_cusd_events_user_id ON cusd_events(user_id);
+CREATE INDEX IF NOT EXISTS idx_rmusd_events_user_id ON rmusd_events(user_id);
 CREATE INDEX IF NOT EXISTS idx_reserve_attestations_timestamp ON reserve_attestations(timestamp DESC);
 
 -- ============================================================
@@ -220,7 +220,7 @@ ALTER TABLE liquidity_pools ENABLE ROW LEVEL SECURITY;
 ALTER TABLE liquidity_positions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fiat_transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE reserve_attestations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE cusd_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rmusd_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE odl_transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
