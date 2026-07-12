@@ -1,9 +1,35 @@
 "use client";
 
-import { useEffect, useState } from "react";
+// src/components/WalletPickerSheet.tsx
+//
+// Contextual wallet picker. Renders ONLY what works in the current
+// environment (HANDOFF.md target matrix):
+//
+//   iOS/Android browser, nothing injected  → 2 deep-link buttons
+//                                            (open in MetaMask / Coinbase app)
+//   Mobile in-app browser or Brave mobile  → the injected wallet(s) only
+//   Desktop with extensions                → each EIP-6963 wallet once
+//                                            + WalletConnect + Coinbase
+//   Desktop, no extensions                 → WalletConnect + Coinbase
+//
+// Icons: EIP-6963 wallets show the icon they announce about themselves.
+// Everything else uses the official brand SVGs in WalletIcons.tsx.
+//
+// WalletConnect renders OUR OWN QR view (display_uri → qrcode). The
+// deprecated @walletconnect/modal is no longer mounted.
+
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useConnect } from "wagmi";
+import { useConnect, type Connector } from "wagmi";
+import QRCode from "qrcode";
 import { useI18n } from "@/lib/i18n";
+import { detectWalletEnv, getDeepLinks, type WalletEnv } from "@/lib/wallet-env";
+import {
+  WalletOptionIcon,
+  MetaMaskIcon,
+  CoinbaseIcon,
+  type BrandKey,
+} from "./WalletIcons";
 import { Logo } from "./Logo";
 import clsx from "clsx";
 
@@ -14,13 +40,206 @@ type Props = {
 
 const CONNECT_TIMEOUT_MS = 10_000;
 
+// ---------------------------------------------------------------------------
+// Option model
+// ---------------------------------------------------------------------------
+
+type ConnectorOption = {
+  kind: "connector";
+  connector: Connector;
+  label: string;
+  badge: "detectada" | "qr";
+  brand: BrandKey;
+  iconUri?: string;
+};
+
+type DeepLinkOption = {
+  kind: "deeplink";
+  id: "metamask" | "coinbase";
+  label: string;
+  href: string;
+};
+
+type WalletOption = ConnectorOption | DeepLinkOption;
+
+/** Friendly labels for well-known EIP-6963 reverse-DNS ids. */
+const RDNS_LABELS: Record<string, string> = {
+  "io.metamask": "MetaMask",
+  "io.metamask.mobile": "MetaMask",
+  "com.brave.wallet": "Brave Wallet",
+  "com.coinbase.wallet": "Coinbase Wallet",
+  "app.phantom": "Phantom",
+  "io.rabby": "Rabby Wallet",
+};
+
+function brandFromId(id: string): BrandKey {
+  const lower = id.toLowerCase();
+  if (lower.includes("brave")) return "brave";
+  if (lower.includes("coinbase")) return "coinbase";
+  if (lower.includes("metamask")) return "metamask";
+  return "generic";
+}
+
+function toAnnouncedOption(c: Connector): ConnectorOption {
+  return {
+    kind: "connector",
+    connector: c,
+    label: RDNS_LABELS[c.id] ?? c.name,
+    badge: "detectada",
+    brand: brandFromId(c.id),
+    // EIP-6963 wallets announce their own icon as a data URI — always
+    // the correct brand mark, so Brave never wears the fox again.
+    iconUri: c.icon ?? undefined,
+  };
+}
+
+/** Brand the generic injected() fallback via window.ethereum flags. */
+function toGenericOption(c: Connector, env: WalletEnv): ConnectorOption {
+  const brand: BrandKey =
+    env.injectedBrand === "brave"
+      ? "brave"
+      : env.injectedBrand === "coinbase"
+        ? "coinbase"
+        : env.injectedBrand === "metamask"
+          ? "metamask"
+          : "generic";
+  const label =
+    brand === "brave"
+      ? "Brave Wallet"
+      : brand === "coinbase"
+        ? "Coinbase Wallet"
+        : brand === "metamask"
+          ? "MetaMask"
+          : "Billetera del navegador";
+  return { kind: "connector", connector: c, label, badge: "detectada", brand };
+}
+
+/**
+ * The core fix: build a short, contextual list instead of dumping every
+ * configured connector. Two working options > five broken ones.
+ * Exported for tests — see FIX-NOTES.md for the environment matrix.
+ */
+export function buildOptions(
+  connectors: readonly Connector[],
+  env: WalletEnv
+): WalletOption[] {
+  // EIP-6963-announced wallets (id = reverse-DNS). Dedupe by id —
+  // some browsers announce twice across frames.
+  const seen = new Set<string>();
+  const announced = connectors.filter((c) => {
+    const isAnnounced = c.type === "injected" && c.id !== "injected";
+    if (!isAnnounced || seen.has(c.id)) return false;
+    seen.add(c.id);
+    return true;
+  });
+
+  const generic = connectors.find((c) => c.id === "injected");
+  const coinbaseSdk = connectors.find((c) => c.id === "coinbaseWalletSDK");
+  const wc = connectors.find((c) => c.id === "walletConnect");
+  const coinbaseAnnounced = announced.some(
+    (c) => c.id === "com.coinbase.wallet"
+  );
+
+  // ---- Mobile ----
+  if (env.isMobile) {
+    if (announced.length > 0) {
+      // In-app browser or wallet-browser (Brave iOS, MetaMask app, …):
+      // show exactly what's installed here. No QR — you can't scan a
+      // QR with the phone it's displayed on.
+      return announced.map(toAnnouncedOption);
+    }
+    if (env.hasInjected && generic) {
+      // Legacy in-app browser: injected but not announced.
+      return [toGenericOption(generic, env)];
+    }
+    // Plain mobile browser, no wallet in this context → deep links.
+    const links = getDeepLinks();
+    return [
+      {
+        kind: "deeplink",
+        id: "metamask",
+        label: "Abrir en MetaMask",
+        href: links.metamask,
+      },
+      {
+        kind: "deeplink",
+        id: "coinbase",
+        label: "Abrir en Coinbase Wallet",
+        href: links.coinbase,
+      },
+    ];
+  }
+
+  // ---- Desktop ----
+  const options: WalletOption[] = announced.map(toAnnouncedOption);
+  if (options.length === 0 && env.hasInjected && generic) {
+    options.push(toGenericOption(generic, env));
+  }
+  if (wc) {
+    options.push({
+      kind: "connector",
+      connector: wc,
+      label: "WalletConnect",
+      badge: "qr",
+      brand: "walletconnect",
+    });
+  }
+  if (coinbaseSdk && !coinbaseAnnounced) {
+    options.push({
+      kind: "connector",
+      connector: coinbaseSdk,
+      label: "Coinbase Wallet",
+      badge: "qr",
+      brand: "coinbase",
+    });
+  }
+  return options;
+}
+
+// ---------------------------------------------------------------------------
+// Sheet
+// ---------------------------------------------------------------------------
+
 export function WalletPickerSheet({ open, onClose }: Props) {
   const { t } = useI18n();
-  const { connectors, connect, status, error } = useConnect();
+  const { connectors, connectAsync, status, error, reset } = useConnect();
   const [mounted, setMounted] = useState(false);
+  const [view, setView] = useState<"list" | "wc-qr">("list");
+  const [pendingUid, setPendingUid] = useState<string | null>(null);
   const [timedOut, setTimedOut] = useState(false);
+  const [wcUri, setWcUri] = useState<string | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  // Invalidates stale connect attempts when the user navigates back
+  // or closes the sheet while a WalletConnect pairing is pending.
+  const attemptRef = useRef(0);
 
   useEffect(() => setMounted(true), []);
+
+  const env = useMemo(
+    () => detectWalletEnv(),
+    // Re-detect each time the sheet opens (a wallet may have unlocked).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mounted, open]
+  );
+
+  const options = useMemo(
+    () => buildOptions(connectors, env),
+    [connectors, env]
+  );
+
+  // Fresh state each time the sheet opens.
+  useEffect(() => {
+    if (!open) return;
+    reset();
+    setView("list");
+    setPendingUid(null);
+    setTimedOut(false);
+    setWcUri(null);
+    setQrDataUrl(null);
+    setCopied(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // Body scroll lock while open
   useEffect(() => {
@@ -42,53 +261,116 @@ export function WalletPickerSheet({ open, onClose }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  // Reset timeout flag on each new attempt
+  // Render the WalletConnect URI as an on-brand QR (design-token colors).
   useEffect(() => {
-    if (status === "pending") setTimedOut(false);
-  }, [status]);
-
-  // Dedupe connectors by id — prevents duplicate wallet entries
-  const uniqueConnectors = connectors.filter(
-    (c, i, arr) => arr.findIndex((c2) => c2.id === c.id) === i
-  );
+    if (!wcUri) {
+      setQrDataUrl(null);
+      return;
+    }
+    let cancelled = false;
+    QRCode.toDataURL(wcUri, {
+      width: 560, // 2x for retina; displayed at 280
+      margin: 1,
+      errorCorrectionLevel: "M",
+      color: { dark: "#1A1A2E", light: "#FFFFFF" },
+    })
+      .then((url) => {
+        if (!cancelled) setQrDataUrl(url);
+      })
+      .catch(() => {
+        /* QR generation failed — copy-link fallback still works */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [wcUri]);
 
   if (!mounted || !open) return null;
-  const connecting = status === "pending";
-  const isIOS =
-    typeof navigator !== "undefined" &&
-    /iPad|iPhone|iPod/.test(navigator.userAgent) &&
-    !/CriOS|FxiOS|EdgiOS/.test(navigator.userAgent);
 
-  async function handleConnect(c: (typeof connectors)[number]) {
+  const connecting = status === "pending";
+
+  // ---- connect flows -------------------------------------------------------
+
+  async function handleInjectedConnect(option: ConnectorOption) {
+    const attempt = ++attemptRef.current;
     setTimedOut(false);
+    setPendingUid(option.connector.uid);
     try {
-      // Race the connect() against a 10s timeout — Issue 3 fix.
-      // Brave often hangs silently if its popup was dismissed; we surface
-      // a clear timeout message instead of an indefinite spinner.
+      // 10s guard: injected wallets (Brave especially) can hang silently
+      // if their popup was dismissed. QR flows are excluded — waiting for
+      // a phone scan is not a hang.
       await Promise.race([
-        connect({ connector: c }),
-        new Promise<never>((_, reject) =>
+        connectAsync({ connector: option.connector }),
+        new Promise<never>((_, rejectRace) =>
           setTimeout(
-            () => reject(new Error("__wallet_timeout__")),
+            () => rejectRace(new Error("__wallet_timeout__")),
             CONNECT_TIMEOUT_MS
           )
         ),
       ]);
-      onClose();
+      if (attempt === attemptRef.current) onClose();
     } catch (e) {
-      const err = e as Error & { code?: number; message: string };
-      if (err.message === "__wallet_timeout__") {
-        setTimedOut(true);
-      }
-      // wagmi/viem errors bubble up via `error` state from useConnect.
+      if (attempt !== attemptRef.current) return; // stale attempt
+      if ((e as Error).message === "__wallet_timeout__") setTimedOut(true);
+      // Other errors surface via useConnect().error → getConnectorError.
+    } finally {
+      if (attempt === attemptRef.current) setPendingUid(null);
     }
   }
+
+  async function handleWalletConnect(option: ConnectorOption) {
+    const wc = option.connector;
+    const attempt = ++attemptRef.current;
+    setTimedOut(false);
+    setPendingUid(wc.uid);
+    setView("wc-qr");
+    setWcUri(null);
+
+    const onMessage = (payload: { type: string; data?: unknown }) => {
+      if (payload.type === "display_uri" && typeof payload.data === "string") {
+        setWcUri(payload.data);
+      }
+    };
+    wc.emitter.on("message", onMessage);
+    try {
+      await connectAsync({ connector: wc });
+      if (attempt === attemptRef.current) onClose();
+    } catch {
+      // Rejected in wallet, proposal expired, or user navigated back.
+      if (attempt === attemptRef.current) setView("list");
+    } finally {
+      wc.emitter.off("message", onMessage);
+      if (attempt === attemptRef.current) setPendingUid(null);
+    }
+  }
+
+  function handleQrBack() {
+    attemptRef.current++; // invalidate the pending pairing attempt
+    setPendingUid(null);
+    setView("list");
+    setWcUri(null);
+    setQrDataUrl(null);
+  }
+
+  async function handleCopyUri() {
+    if (!wcUri) return;
+    try {
+      await navigator.clipboard?.writeText(wcUri);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard unavailable — nothing to do */
+    }
+  }
+
+  const showDeepLinkBanner =
+    view === "list" && options.some((o) => o.kind === "deeplink");
 
   const finalError = timedOut
     ? "Tu billetera no respondió. Asegúrate de que esté desbloqueada y acepta la solicitud de conexión."
     : error
-    ? getConnectorError(error)
-    : null;
+      ? getConnectorError(error)
+      : null;
 
   return createPortal(
     <div
@@ -120,16 +402,40 @@ export function WalletPickerSheet({ open, onClose }: Props) {
         {/* Header */}
         <div className="px-lg pt-xs pb-md flex items-start justify-between">
           <div className="flex items-center gap-sm pr-sm">
-            <Logo className="w-9 h-9" />
+            {view === "wc-qr" ? (
+              <button
+                type="button"
+                onClick={handleQrBack}
+                aria-label="Volver"
+                className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-surface text-ink"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="w-5 h-5"
+                  aria-hidden="true"
+                >
+                  <path d="M15 18l-6-6 6-6" />
+                </svg>
+              </button>
+            ) : (
+              <Logo className="w-9 h-9" />
+            )}
             <div>
               <h3
                 id="wallet-sheet-title"
                 className="text-subhead font-bold text-ink leading-tight"
               >
-                {t.wallet.connect}
+                {view === "wc-qr" ? "Escanea con tu billetera" : t.wallet.connect}
               </h3>
               <p className="text-small text-ink/60 mt-xs">
-                Tus fondos quedan en tu billetera. Remes no los toca.
+                {view === "wc-qr"
+                  ? "Abre la app de tu billetera en el teléfono y escanea este código."
+                  : "Tus fondos quedan en tu billetera. Remes no los toca."}
               </p>
             </div>
           </div>
@@ -154,43 +460,92 @@ export function WalletPickerSheet({ open, onClose }: Props) {
           </button>
         </div>
 
-        {/* iOS Safari fallback — Issue 2 fix */}
-        {isIOS && connectors.length > 0 && (
-          <div className="mx-lg mb-sm p-sm rounded-md bg-accent/10">
-            <p className="text-small text-ink/80 leading-snug">
-              En iPhone, abre esta página dentro de la app de MetaMask o Coinbase Wallet para conectar.{" "}
-              <a
-                className="font-semibold text-primary underline"
-                href="https://metamask.io/download/"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Cómo conectar en iPhone
-              </a>
-            </p>
+        {view === "wc-qr" ? (
+          /* ------------------------- WalletConnect QR ------------------------- */
+          <div className="px-lg flex flex-col items-center">
+            <div className="w-[280px] h-[280px] rounded-lg border border-ink/10 bg-white p-sm flex items-center justify-center">
+              {qrDataUrl ? (
+                <img
+                  src={qrDataUrl}
+                  alt="Código QR de WalletConnect"
+                  width={264}
+                  height={264}
+                  className="w-full h-full"
+                />
+              ) : (
+                <div
+                  className="w-full h-full rounded-md bg-surface animate-pulse"
+                  aria-label="Generando código QR"
+                />
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleCopyUri}
+              disabled={!wcUri}
+              className={clsx(
+                "mt-md h-10 px-md rounded-pill text-small font-semibold",
+                "border border-ink/10 text-ink hover:bg-surface transition-colors",
+                "focus-visible:shadow-focus focus-visible:outline-none",
+                !wcUri && "opacity-50 cursor-not-allowed"
+              )}
+            >
+              {copied ? "Enlace copiado" : "Copiar enlace"}
+            </button>
           </div>
+        ) : (
+          /* ----------------------------- Wallet list ----------------------------- */
+          <>
+            {showDeepLinkBanner && (
+              <div className="mx-lg mb-sm p-sm rounded-md bg-accent-soft">
+                <p className="text-small text-ink/80 leading-snug">
+                  {env.isIOS
+                    ? "En iPhone, abre esta página dentro de la app de MetaMask o Coinbase Wallet para conectar."
+                    : "En tu teléfono, abre esta página dentro de la app de MetaMask o Coinbase Wallet para conectar."}{" "}
+                  <a
+                    className="font-semibold text-primary underline"
+                    href="https://metamask.io/download/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Cómo conectar
+                  </a>
+                </p>
+              </div>
+            )}
+
+            <div className="px-lg space-y-xs">
+              {options.map((option) =>
+                option.kind === "deeplink" ? (
+                  <DeepLinkRow key={option.id} option={option} />
+                ) : (
+                  <ConnectorRow
+                    key={option.connector.uid}
+                    option={option}
+                    pending={pendingUid === option.connector.uid}
+                    disabled={connecting || pendingUid !== null}
+                    onClick={() =>
+                      option.badge === "qr" &&
+                      option.connector.id === "walletConnect"
+                        ? handleWalletConnect(option)
+                        : handleInjectedConnect(option)
+                    }
+                  />
+                )
+              )}
+            </div>
+
+            {finalError && (
+              <div className="mx-lg mt-md p-sm rounded-md bg-error/10 border border-error/30">
+                <p className="text-small text-error font-medium">
+                  {finalError}
+                </p>
+              </div>
+            )}
+          </>
         )}
 
-        {/* Connectors list */}
-        <div className="px-lg space-y-xs">
-          {uniqueConnectors.map((c) => (
-            <ConnectorButton
-              key={c.uid}
-              connector={c}
-              connecting={connecting || timedOut}
-              onClick={() => handleConnect(c)}
-            />
-          ))}
-        </div>
-
-        {/* Error / timeout */}
-        {finalError && (
-          <div className="mx-lg mt-md p-sm rounded-md bg-error/10 border border-error/30">
-            <p className="text-small text-error font-medium">{finalError}</p>
-          </div>
-        )}
-
-        {/* Cancelar at bottom of sheet */}
+        {/* Cancelar */}
         <div className="mt-md border-t border-ink/5">
           <button
             type="button"
@@ -206,172 +561,117 @@ export function WalletPickerSheet({ open, onClose }: Props) {
   );
 }
 
-/**
- * ConnectorButton — single wallet option row.
- * Icon + display name + connector-type label (Detectada / QR).
- */
-function ConnectorButton({
-  connector,
-  connecting,
+// ---------------------------------------------------------------------------
+// Rows
+// ---------------------------------------------------------------------------
+
+function ConnectorRow({
+  option,
+  pending,
+  disabled,
   onClick,
 }: {
-  connector: ReturnType<typeof useConnect>["connectors"][number];
-  connecting: boolean;
+  option: ConnectorOption;
+  pending: boolean;
+  disabled: boolean;
   onClick: () => void;
 }) {
-  const brand = getWalletBrand(connector.id, connector.name);
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={connecting}
+      disabled={disabled}
       className={clsx(
         "w-full h-14 rounded-xl bg-surface border border-ink/5",
         "flex items-center justify-between px-md",
         "transition-colors duration-150 hover:bg-ink/5",
         "focus-visible:shadow-focus focus-visible:outline-none",
-        connecting && "opacity-60 cursor-wait"
+        disabled && !pending && "opacity-60",
+        pending && "cursor-wait"
       )}
     >
       <div className="flex items-center gap-sm">
-        <img
-          src={brand.icon}
-          alt=""
-          width={32}
-          height={32}
+        <WalletOptionIcon
+          iconUri={option.iconUri}
+          brand={option.brand}
           className="w-8 h-8 rounded-lg object-contain"
-          aria-hidden="true"
         />
-        <span className="text-body font-semibold text-ink">
-          {brand.displayName}
-        </span>
+        <span className="text-body font-semibold text-ink">{option.label}</span>
       </div>
-      <span className="text-micro text-ink/50 uppercase tracking-wider">
-        {connector.type === "injected" ? "Detectada" : "QR"}
-      </span>
+      {pending ? (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          className="w-4 h-4 animate-spin text-primary"
+          aria-label="Conectando"
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r="9"
+            stroke="currentColor"
+            strokeOpacity="0.2"
+            strokeWidth="3"
+          />
+          <path
+            d="M21 12a9 9 0 0 0-9-9"
+            stroke="currentColor"
+            strokeWidth="3"
+            strokeLinecap="round"
+          />
+        </svg>
+      ) : (
+        <span className="text-micro text-ink/50 uppercase tracking-wider">
+          {option.badge === "detectada" ? "Detectada" : "QR"}
+        </span>
+      )}
     </button>
   );
 }
 
-/**
- * Wallet brand registry — covers every connector id wagmi v2 emits AND
- * the standard EIP-5749 / EIP-6963 flag names so we never show raw IDs.
- *
- * EIP-6963 injects each wallet with its own `info.uuid` like `isMetaMask`,
- * `com.brave.wallet`, `io.rabby`, etc. — those flow in via the
- * `targetMap` lookup in wagmi's injected connector and end up as
- * `connector.id` here.
- */
-type Brand = { displayName: string; icon: string };
-
-const BRAND_REGISTRY: Record<string, Brand> = {
-  // wagmi v2 connector ids
-  injected: {
-    displayName: "Billetera del navegador",
-    icon: "/icons/wallets/metamask.svg",
-  },
-  metaMask: {
-    displayName: "MetaMask",
-    icon: "/icons/wallets/metamask.svg",
-  },
-  brave: {
-    displayName: "Brave Wallet",
-    icon: "/icons/wallets/brave.svg",
-  },
-  coinbaseWalletSDK: {
-    displayName: "Coinbase Wallet",
-    icon: "/icons/wallets/coinbase.svg",
-  },
-  walletConnect: {
-    displayName: "WalletConnect",
-    icon: "/icons/wallets/walletconnect.svg",
-  },
-
-  // EIP-5749 / EIP-6963 raw flag names (defense-in-depth for any
-  // future connector that surfaces an unhandled id)
-  isMetaMask: {
-    displayName: "MetaMask",
-    icon: "/icons/wallets/metamask.svg",
-  },
-  "com.brave.wallet": {
-    displayName: "Brave Wallet",
-    icon: "/icons/wallets/brave.svg",
-  },
-  isBraveWallet: {
-    displayName: "Brave Wallet",
-    icon: "/icons/wallets/brave.svg",
-  },
-  io: {
-    displayName: "Billetera del navegador",
-    icon: "/icons/wallets/metamask.svg",
-  },
-};
-
-const NEUTRAL_BRAND: Brand = {
-  displayName: "Billetera",
-  icon: "/icons/wallets/metamask.svg",
-};
-
-function getWalletBrand(id: string, name?: string): Brand {
-  if (id in BRAND_REGISTRY) return BRAND_REGISTRY[id];
-
-  // Prefer the display name wagmi already computed for us.
-  if (name && name !== id && name !== "Injected") {
-    return {
-      displayName: name,
-      icon: BRAND_REGISTRY[id]?.icon ?? NEUTRAL_BRAND.icon,
-    };
-  }
-
-  // EIP-6963 UUIDs often look like `isMetaMask`, `com.brave.wallet`,
-  // `io.rabby`, etc. Pattern-match on substrings before giving up.
-  const lower = (id || "").toLowerCase();
-  if (lower.includes("metamask")) {
-    return BRAND_REGISTRY.isMetaMask;
-  }
-  if (lower.includes("brave")) {
-    return BRAND_REGISTRY.isBraveWallet;
-  }
-  if (lower.includes("rabby")) {
-    return {
-      displayName: "Rabby Wallet",
-      icon: "/icons/wallets/metamask.svg",
-    };
-  }
-  if (lower.includes("coinbase")) {
-    return BRAND_REGISTRY.coinbaseWalletSDK;
-  }
-  if (lower.includes("walletconnect") || lower.includes("wc")) {
-    return BRAND_REGISTRY.walletConnect;
-  }
-
-  return NEUTRAL_BRAND;
+function DeepLinkRow({ option }: { option: DeepLinkOption }) {
+  const Icon = option.id === "metamask" ? MetaMaskIcon : CoinbaseIcon;
+  return (
+    <a
+      href={option.href}
+      className={clsx(
+        "w-full h-14 rounded-xl bg-surface border border-ink/5",
+        "flex items-center justify-between px-md",
+        "transition-colors duration-150 hover:bg-ink/5",
+        "focus-visible:shadow-focus focus-visible:outline-none"
+      )}
+    >
+      <div className="flex items-center gap-sm">
+        <Icon className="w-8 h-8 rounded-lg" />
+        <span className="text-body font-semibold text-ink">{option.label}</span>
+      </div>
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="w-4 h-4 text-ink/40"
+        aria-hidden="true"
+      >
+        <path d="M7 17L17 7M9 7h8v8" />
+      </svg>
+    </a>
+  );
 }
 
-/**
- * getConnectorError — categorizes wagmi/viem errors into Spanish-friendly
- * messages. If we don't recognize the shape, surface the raw error so the
- * user can copy/paste it for support (catches edge cases like
- * "Already processing eth_requestAccounts" or unexpected RPC errors).
- */
+// ---------------------------------------------------------------------------
+// Errors — DR tú form (never voseo)
+// ---------------------------------------------------------------------------
+
 function getConnectorError(error: Error): string {
   const msg = error.message || "";
-  // iOS Brave phantom "MetaMask" — internal RPC error
-  if (msg.includes("An internal error has occurred")) {
-    return "Tu billetera no respondió. Prueba con otra opción o abre esta página dentro de la app de MetaMask en iPhone.";
-  }
-  // Brave wallet locked / undefined response crash
   if (
-    msg.includes("undefined is not an object") ||
-    msg.includes("Cannot read properties of undefined")
+    msg.includes("Provider not found") ||
+    msg.includes("provider not found")
   ) {
-    return "Tu billetera no respondió. Desbloquéala e intenta de nuevo.";
-  }
-  if (msg.includes("connector not found")) {
-    return "Conector no disponible. Recarga la página e intenta de nuevo.";
-  }
-  if (msg.includes("Provider not found") || msg.includes("provider not found")) {
-    return "Billetera no encontrada. Instala la extensión o usa WalletConnect con QR.";
+    return "Billetera no encontrada. Instala la extensión o usa otra opción de la lista.";
   }
   if (msg.includes("rejected") || msg.includes("denied")) {
     return "Conexión rechazada por el usuario.";
@@ -389,10 +689,7 @@ function getConnectorError(error: Error): string {
   if (msg.includes("rate limit") || msg.includes("Limit exceeded")) {
     return "Demasiados intentos. Espera un minuto e intenta de nuevo.";
   }
-  if (
-    msg.includes("already pending") ||
-    msg.includes("Already processing")
-  ) {
+  if (msg.includes("already pending") || msg.includes("Already processing")) {
     return "Ya hay una solicitud pendiente en tu billetera. Ábrela para responder.";
   }
   const truncated = msg.length > 80 ? msg.slice(0, 80) + "..." : msg;

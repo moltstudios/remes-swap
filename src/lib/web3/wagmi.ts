@@ -2,118 +2,87 @@ import { http, createConfig } from "wagmi";
 import { base, baseSepolia } from "wagmi/chains";
 import { injected, walletConnect, coinbaseWallet } from "wagmi/connectors";
 
-// WalletConnect Cloud project ID
-// Register at https://cloud.walletconnect.com (free, 30 seconds)
-// MUST be a real project ID — fake ones cause "Invalid App Configuration"
-const WC_PROJECT_ID = process.env.NEXT_PUBLIC_WC_PROJECT_ID || "";
+// ---------------------------------------------------------------------------
+// WHAT CHANGED AND WHY (2026-07-12 wallet-picker fix)
+//
+// Before: THREE manual injected() connectors (generic + target:"metaMask" +
+// custom braveTarget) stacked ON TOP of wagmi's default EIP-6963
+// multi-provider discovery. On Brave iOS that produced up to 4 injected
+// entries (Brave sets isMetaMask=true for compat, so the "metaMask" target
+// matched Brave too) plus WalletConnect plus Coinbase = the 5-6 broken
+// options in Timothy's screenshots.
+//
+// After: EIP-6963 discovery (wagmi default, left ON) is the ONLY source of
+// per-wallet injected connectors. Each installed wallet announces itself
+// exactly once, with its own real name and icon — Brave announces
+// "Brave Wallet" with the lion, MetaMask announces "MetaMask" with the fox.
+// Impersonation flags (isMetaMask on Brave) become irrelevant.
+//
+// One generic injected() stays as a FALLBACK for legacy in-app browsers
+// that inject window.ethereum without announcing via EIP-6963. The picker
+// (WalletPickerSheet) hides it whenever announced providers exist.
+//
+// WalletConnect: showQrModal is now FALSE. @walletconnect/modal is
+// deprecated by Reown (that dark third-party modal is what rendered the
+// blank wallet tiles). The picker renders its own on-brand QR view from
+// the connector's `display_uri` message instead.
+// ---------------------------------------------------------------------------
 
-// Only include WalletConnect if we have a real project ID (32+ hex chars)
+const WC_PROJECT_ID = process.env.NEXT_PUBLIC_WC_PROJECT_ID || "";
 const hasValidWCId = WC_PROJECT_ID.length >= 32;
 
-/**
- * Detect the injected EIP-1193 provider.
- *
- * Brave browser ships a built-in wallet that shadows `window.ethereum`.
- * Brave sets BOTH `isBraveWallet=true` AND `isMetaMask=true` for backward
- * compatibility with dApps expecting MetaMask.
- *
- * Therefore: check `isBraveWallet` FIRST. If present, it's Brave —
- * never MetaMask, regardless of the `isMetaMask` flag.
- *
- * When locked, Brave returns `undefined` from `eth_requestAccounts`,
- * which crashes wagmi v2's `injected()` connector on `.map()`.
- */
-function getInjectedTarget() {
-  if (typeof window === "undefined") return undefined;
-
-  const eth = window.ethereum as
-    | {
-        isMetaMask?: boolean;
-        isBraveWallet?: boolean;
-        providers?: Array<{
-          isMetaMask?: boolean;
-          isBraveWallet?: boolean;
-        }>;
-      }
-    | undefined;
-
-  if (!eth) return undefined;
-
-  // EIP-5749: multiple injected providers (desktop with multiple extensions)
-  // Look for a REAL MetaMask (not Brave pretending to be MetaMask)
-  if (eth.providers?.length) {
-    const mm = eth.providers.find((p) => p.isMetaMask && !p.isBraveWallet);
-    if (mm) {
-      return { id: "isMetaMask", name: "MetaMask", provider: mm as any };
-    }
-  }
-
-  // ⚠️ Brave check MUST come before MetaMask check.
-  // Brave sets both isBraveWallet=true AND isMetaMask=true.
-  // If we check MetaMask first, Brave gets misidentified as MetaMask.
-  if (eth.isBraveWallet) {
-    return { id: "isBraveWallet", name: "Brave Wallet", provider: eth as any };
-  }
-
-  // Real MetaMask (desktop extension, not Brave)
-  if (eth.isMetaMask) {
-    return { id: "isMetaMask", name: "MetaMask", provider: eth as any };
-  }
-
-  // Unknown injected provider
-  return { id: "injected" as const, name: "Browser Wallet", provider: eth as any };
-}
+// metadata.url MUST exactly match the origin the dapp is served from.
+// Reown's relay + Verify API reject mismatched origins, which is one of
+// the two causes of the "Subscribing to …" hang (the other is the project
+// allowlist on dashboard.reown.com — see FIX-NOTES.md).
+// The old code fell back to "https://remes.app" during SSR module
+// evaluation, which never matched remes-swap.vercel.app.
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL || "https://remes-swap.vercel.app";
 
 export const config = createConfig({
   chains: [base, baseSepolia],
+  // multiInjectedProviderDiscovery defaults to true — do not disable it,
+  // and do not add per-wallet injected() targets. Discovery IS the dedupe.
   connectors: [
-    // Single injected connector with explicit provider detection.
-    // Prevents Brave's locked wallet from crashing wagmi's connector
-    // and correctly identifies Brave vs MetaMask (Brave sets both flags).
-    injected({
-      shimDisconnect: true,
-      target: getInjectedTarget,
+    // Fallback only. Hidden by the picker when EIP-6963 wallets exist.
+    injected({ shimDisconnect: true }),
+
+    // Coinbase SDK: in-app browser, extension popup, mobile deep link,
+    // and Smart Wallet. The picker hides this row if the Coinbase
+    // EXTENSION already announced itself via EIP-6963 (avoids a
+    // duplicate Coinbase entry on desktop).
+    coinbaseWallet({
+      appName: "Remes",
+      appLogoUrl: `${SITE_URL}/icons/icon-192.png`,
+      preference: "all",
     }),
 
-    // WalletConnect v2 — only if real project ID is configured
+    // WalletConnect v2 — desktop only in the picker. Custom QR view;
+    // the deprecated @walletconnect/modal is gone.
     ...(hasValidWCId
       ? [
           walletConnect({
             projectId: WC_PROJECT_ID,
             metadata: {
-              name: "Remes Swap",
+              name: "Remes",
               description: "El dólar que funciona en todas partes",
-              url:
-                typeof window !== "undefined"
-                  ? window.location.origin
-                  : "https://remes.app",
-              icons: ["https://remes.app/icons/icon-192.png"],
+              url: SITE_URL,
+              icons: [`${SITE_URL}/icons/icon-192.png`],
             },
-            showQrModal: true,
+            showQrModal: false,
           }),
         ]
       : []),
-
-    // Coinbase Wallet SDK — opens app or shows download link
-    coinbaseWallet({
-      appName: "Remes Swap",
-      appLogoUrl: "https://remes.app/icons/icon-192.png",
-      headlessMode: false,
-    }),
   ],
   transports: {
     [base.id]: http(
-      (process.env.NEXT_PUBLIC_BASE_RPC || "https://mainnet.base.org").trim()
+      process.env.NEXT_PUBLIC_BASE_RPC || "https://mainnet.base.org"
     ),
     [baseSepolia.id]: http(
-      (process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC || "https://sepolia.base.org").trim()
+      process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC || "https://sepolia.base.org"
     ),
   },
-  // Disable EIP-6963 multi-provider discovery — we use explicit connector
-  // targeting in getInjectedTarget(). Without this, wagmi discovers every
-  // injected provider (including Brave pretending to be MetaMask) and creates
-  // separate connectors for each, resulting in 5+ wallet entries on iOS Brave.
-  multiInjectedProviderDiscovery: false,
   ssr: true,
 });
 
