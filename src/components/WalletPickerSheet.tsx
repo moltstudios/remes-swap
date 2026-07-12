@@ -5,9 +5,10 @@
 // Contextual wallet picker. Renders ONLY what works in the current
 // environment (HANDOFF.md target matrix):
 //
-//   iOS/Android browser, nothing injected  → 2 deep-link buttons
-//                                            (open in MetaMask / Coinbase app)
-//   Mobile in-app browser or Brave mobile  → the injected wallet(s) only
+//   iOS/Android browser, nothing injected  → MetaMask + Coinbase + WalletConnect
+//   iOS Brave (Brave Wallet announced)     → Brave Wallet + MetaMask + Coinbase + WalletConnect
+//   iOS in MetaMask app browser            → MetaMask only (in-page wins)
+//   iOS in Coinbase app browser            → Coinbase Wallet only (in-page wins)
 //   Desktop with extensions                → each EIP-6963 wallet once
 //                                            + WalletConnect + Coinbase
 //   Desktop, no extensions                 → WalletConnect + Coinbase
@@ -155,33 +156,64 @@ export function buildOptions(
   );
 
   // ---- Mobile ----
+  // On mobile, ALWAYS render:
+  //   1. Announced in-page wallets (Brave Wallet on Brave iOS, etc.)
+  //   2. Deep-link buttons for MetaMask and Coinbase IF NOT already announced
+  //   3. WalletConnect (universal link / QR fallback)
+  //
+  // An in-page wallet existing ≠ the user wanting to use it.
+  // Users may prefer their actual wallet app over the browser's wallet.
   if (env.isMobile) {
-    if (announced.length > 0) {
-      // In-app browser or wallet-browser (Brave iOS, MetaMask app, …):
-      // show exactly what's installed here. No QR — you can't scan a
-      // QR with the phone it's displayed on.
-      return announced.map(toAnnouncedOption);
-    }
-    if (env.hasInjected && generic) {
-      // Legacy in-app browser: injected but not announced.
-      return [toGenericOption(generic, env)];
-    }
-    // Plain mobile browser, no wallet in this context → deep links.
+    const announcedIds = new Set(announced.map((c) => c.id));
+    const options: WalletOption[] = announced.map(toAnnouncedOption);
     const links = getDeepLinks();
-    return [
-      {
+
+    // Legacy in-app browser: injected but not announced via EIP-6963.
+    // Show the generic injected connector with brand detection.
+    if (options.length === 0 && env.hasInjected && generic) {
+      options.push(toGenericOption(generic, env));
+    }
+
+    // Deep-link for MetaMask if not already in-page (announced or legacy injected)
+    const hasMetaMaskInPage =
+      announcedIds.has("io.metamask") ||
+      announcedIds.has("io.metamask.mobile") ||
+      env.injectedBrand === "metamask";
+    if (!hasMetaMaskInPage) {
+      options.push({
         kind: "deeplink",
         id: "metamask",
-        label: "Abrir en MetaMask",
+        label: "MetaMask",
         href: links.metamask,
-      },
-      {
+      });
+    }
+
+    // Deep-link for Coinbase Wallet if not already in-page
+    const hasCoinbaseInPage =
+      announcedIds.has("com.coinbase.wallet") ||
+      announcedIds.has("coinbaseWalletSDK") ||
+      env.injectedBrand === "coinbase";
+    if (!hasCoinbaseInPage) {
+      options.push({
         kind: "deeplink",
         id: "coinbase",
-        label: "Abrir en Coinbase Wallet",
+        label: "Coinbase Wallet",
         href: links.coinbase,
-      },
-    ];
+      });
+    }
+
+    // Always include WalletConnect on mobile
+    if (wc) {
+      options.push({
+        kind: "connector",
+        connector: wc,
+        label: "WalletConnect",
+        badge: "qr",
+        brand: "walletconnect",
+      });
+    }
+
+    return options;
   }
 
   // ---- Desktop ----
