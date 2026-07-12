@@ -2,7 +2,9 @@
  * Uniswap V3 ABIs — minimal, only the functions we need.
  */
 
-// Uniswap V3 SwapRouter — exactInputSingle
+// Uniswap V3 SwapRouter02 — exactInputSingle (Base)
+// SwapRouter02 uses IV3SwapRouter.ExactInputSingleParams with 7 fields
+// (no `deadline` in params — it's handled by checking block.timestamp)
 export const SWAP_ROUTER_ABI = [
   {
     inputs: [
@@ -12,12 +14,11 @@ export const SWAP_ROUTER_ABI = [
           { internalType: 'address', name: 'tokenOut', type: 'address' },
           { internalType: 'uint24', name: 'fee', type: 'uint24' },
           { internalType: 'address', name: 'recipient', type: 'address' },
-          { internalType: 'uint256', name: 'deadline', type: 'uint256' },
           { internalType: 'uint256', name: 'amountIn', type: 'uint256' },
           { internalType: 'uint256', name: 'amountOutMinimum', type: 'uint256' },
           { internalType: 'uint160', name: 'sqrtPriceLimitX96', type: 'uint160' },
         ],
-        internalType: 'struct ISwapRouter.ExactInputSingleParams',
+        internalType: 'struct IV3SwapRouter.ExactInputSingleParams',
         name: 'params',
         type: 'tuple',
       },
