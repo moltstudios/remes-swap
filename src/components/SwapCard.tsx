@@ -11,7 +11,6 @@ import {
 } from "@/lib/format";
 import { SUPPORTED_TOKENS, type TokenMeta } from "@/lib/tokens";
 import { fetchQuote, type QuoteResponse } from "@/lib/quote";
-import { UNISWAP_V3 } from "@/lib/web3/contracts";
 import { TrustBar } from "./TrustBar";
 import { TokenSelector } from "./TokenSelector";
 import { TokenLogo } from "./TokenLogo";
@@ -19,6 +18,7 @@ import { AmountInput } from "./AmountInput";
 import { QuoteBreakdown, type QuoteState } from "./QuoteBreakdown";
 import { BigCTA, type CTAState } from "./BigCTA";
 import { DirectionToggle } from "./DirectionToggle";
+import { useCountUp } from "@/hooks/useCountUp";
 
 const PLATFORM_FEE_PERCENT = 0.003;
 const QUOTE_STALE_MS = 30_000;
@@ -26,6 +26,12 @@ const QUOTE_STALE_MS = 30_000;
 /**
  * SwapCard — the entire swap form on the main screen.
  * Routes to /confirm on CTA tap; execution happens there.
+ *
+ * Per Ghost polish list (2026-07-12):
+ * - No duplicate Conectar button — wallet pill in header is the only CTA.
+ * - 48px Bold amounts on the receive field (count-up animates from 0 → quote).
+ * - Shimmer skeleton while quote is loading.
+ * - Native keyboard with auto-comma formatting (inputMode="decimal" already in AmountInput).
  */
 export function SwapCard() {
   const router = useRouter();
@@ -47,7 +53,6 @@ export function SwapCard() {
     query: { enabled: isConnected },
   });
 
-  // Quote fetching — debounced
   useEffect(() => {
     if (!amount || parseFloat(amount) <= 0) {
       setQuote(null);
@@ -76,7 +81,6 @@ export function SwapCard() {
     return () => clearTimeout(handle);
   }, [amount, fromToken, toToken]);
 
-  // Mark quote stale after 30s
   useEffect(() => {
     if (!quote || quoteState !== "fresh") return;
     const interval = setInterval(() => {
@@ -98,11 +102,11 @@ export function SwapCard() {
     return parseFloat(quote.expectedOutput) / parseFloat(amount);
   }, [quote, amount]);
 
-  const receivedNum = quote ? parseFloat(quote.expectedOutput) : 0;
+  const receivedTarget = quote ? parseFloat(quote.expectedOutput) : 0;
+  const receivedAnimated = useCountUp(receivedTarget, 600);
   const minReceivedNum = quote ? parseFloat(quote.minReceived) : 0;
   const feeNum = quote ? parseFloat(quote.fee) : 0;
 
-  // CTA state derivation
   let ctaState: CTAState = "rest";
   let ctaLabel = `${t.swap.swap} ${formatAmount(amount || "0", 0)} ${fromToken.symbol}`;
 
@@ -135,16 +139,13 @@ export function SwapCard() {
 
   return (
     <div className="space-y-lg">
-      {/* Trust signals — above the input per brief */}
       <TrustBar />
 
-      {/* Headline */}
       <div>
         <h1 className="text-head text-ink leading-tight">{t.swap.headline}</h1>
         <p className="text-small text-ink/60 mt-xs">{t.swap.subhead}</p>
       </div>
 
-      {/* Send card */}
       <AmountInput
         label={t.swap.youSend}
         value={amount}
@@ -172,7 +173,6 @@ export function SwapCard() {
         }
       />
 
-      {/* Direction toggle */}
       <DirectionToggle
         reversed={reversed}
         onToggle={() => {
@@ -187,10 +187,9 @@ export function SwapCard() {
         ariaLabel={t.swap.reverseDirection}
       />
 
-      {/* Receive card */}
       <AmountInput
         label={t.swap.youReceive}
-        value={quote ? formatAmount(quote.expectedOutput, 2) : ""}
+        value={quote ? formatAmount(receivedAnimated, 2) : ""}
         onChange={() => {}}
         readOnly
         muted
@@ -209,7 +208,6 @@ export function SwapCard() {
         decimals={2}
       />
 
-      {/* Quote breakdown */}
       {(amount && parseFloat(amount) > 0) && (
         <QuoteBreakdown
           state={quoteState}
@@ -217,14 +215,13 @@ export function SwapCard() {
           fee={feeNum}
           feeCurrency={fromToken.symbol}
           feePercent={PLATFORM_FEE_PERCENT}
-          received={receivedNum}
+          received={receivedTarget}
           receivedCurrency={toToken.symbol}
           minReceived={minReceivedNum}
           impact={quote?.priceImpact}
         />
       )}
 
-      {/* Sticky CTA */}
       <div className="sticky bottom-0 -mx-md px-md pt-md pb-md bg-gradient-to-t from-bg via-bg to-transparent">
         <BigCTA state={ctaState} onClick={handleCta} ariaLabel={ctaLabel}>
           {ctaLabel}

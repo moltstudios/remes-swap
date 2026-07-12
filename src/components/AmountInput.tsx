@@ -90,12 +90,14 @@ export function AmountInput({
         </div>
       </div>
       {state === "loading" && (
-        <p className="text-micro text-ink/50 mt-xs flex items-center gap-xs">
+        <p className="text-small text-ink/50 mt-xs flex items-center gap-xs">
           <Spinner /> Pidiendo precio...
         </p>
       )}
       {state === "error" && (
-        <p className="text-micro text-error mt-xs">No pudimos leer el monto.</p>
+        <p className="text-small text-error mt-xs">
+          No pudimos leer el monto
+        </p>
       )}
     </div>
   );

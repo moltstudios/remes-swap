@@ -6,6 +6,7 @@ import { ServiceWorkerRegistrar } from "@/components/ServiceWorkerRegistrar";
 
 const inter = Inter({
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
   variable: "--font-inter",
   display: "swap",
 });
@@ -42,7 +43,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es" className={inter.variable}>
-      <body className="min-h-screen bg-bg text-ink">
+      <body className={`${inter.className} min-h-screen bg-bg text-ink`}>
         <Web3Provider>
           {children}
           <ServiceWorkerRegistrar />

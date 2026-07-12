@@ -46,7 +46,7 @@ export const es = {
     swapping: "Cambiando...",
     approving: "Autorizando...",
     fetchingQuote: "Pidiendo precio...",
-    quoteFailed: "No pudimos conseguir el precio. Intentá de nuevo.",
+    quoteFailed: "No pudimos conseguir el precio. Intenta de nuevo.",
     networkFeeWarning: "Necesitás un poco de ETH en Base para la comisión de red.",
     impactHigh: "Tu intercambio moverá el precio. ¿Querés continuar?",
     impactWarning: "Impacto alto en el precio",
@@ -85,7 +85,7 @@ export const es = {
   errors: {
     txRejected: "Cancelaste la transacción.",
     txFailed: "Algo falló. Tu billetera no fue debitada.",
-    networkError: "Sin conexión. Revisá tu internet.",
+    networkError: "Sin conexión. Revisa tu internet.",
     tryAgain: "Reintentar",
     goHome: "Volver al inicio",
   },

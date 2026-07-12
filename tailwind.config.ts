@@ -81,12 +81,17 @@ const config: Config = {
           "0%": { transform: "translateY(100%)" },
           "100%": { transform: "translateY(0)" },
         },
+        shimmer: {
+          "0%": { backgroundPosition: "-200% 0" },
+          "100%": { backgroundPosition: "200% 0" },
+        },
       },
       animation: {
         "tick-in": "tickIn 280ms cubic-bezier(0.22, 1, 0.36, 1)",
         pulse: "pulse 1.4s ease-in-out infinite",
         "draw-check": "drawCheck 500ms cubic-bezier(0.22, 1, 0.36, 1) forwards",
         "sheet-up": "sheetUp 280ms cubic-bezier(0.22, 1, 0.36, 1)",
+        shimmer: "shimmer 1.6s linear infinite",
       },
     },
   },

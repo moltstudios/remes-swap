@@ -8,38 +8,47 @@ type Props = {
   size?: "sm" | "md" | "lg";
 };
 
+const ICON_MAP: Record<string, string> = {
+  USDC: "/icons/usdc.svg",
+  USDT: "/icons/usdt.svg",
+  RMUSD: "/icons/icon-192.svg",
+};
+
+/**
+ * TokenLogo — uses official-style SVGs from /public/icons.
+ * Falls back to a subtle monogram for unknown tokens.
+ */
 export function TokenLogo({ symbol, size = "md" }: Props) {
   const dim =
     size === "sm"
-      ? "w-6 h-6 text-[10px]"
+      ? "w-7 h-7"
       : size === "lg"
-      ? "w-12 h-12 text-base"
-      : "w-8 h-8 text-xs";
+      ? "w-12 h-12"
+      : "w-8 h-8";
+  const src = ICON_MAP[symbol.toUpperCase()];
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt={symbol}
+        width={size === "sm" ? 28 : size === "lg" ? 48 : 32}
+        height={size === "sm" ? 28 : size === "lg" ? 48 : 32}
+        className={clsx("shrink-0 rounded-full", dim)}
+        aria-hidden="true"
+      />
+    );
+  }
   return (
     <div
       className={clsx(
-        "rounded-full flex items-center justify-center font-bold shrink-0 text-white",
-        tokenColor(symbol),
-        dim
+        "rounded-full flex items-center justify-center font-bold shrink-0 text-white bg-ink",
+        size === "sm" ? "w-7 h-7 text-xs" : size === "lg" ? "w-12 h-12 text-base" : "w-8 h-8 text-xs"
       )}
       aria-hidden="true"
     >
       {symbol.slice(0, 3)}
     </div>
   );
-}
-
-function tokenColor(symbol: string): string {
-  switch (symbol.toUpperCase()) {
-    case "USDC":
-      return "bg-[#2775CA]";
-    case "USDT":
-      return "bg-[#26A17B]";
-    case "RMUSD":
-      return "bg-primary";
-    default:
-      return "bg-ink";
-  }
 }
 
 /**
