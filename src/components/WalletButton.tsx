@@ -210,7 +210,13 @@ function getConnectorName(id: string): string {
 function getErrorMessage(error: Error): string {
   const msg = error.message || "";
   if (msg.includes("Provider not found") || msg.includes("provider not found")) {
-    return "Billetera no encontrada. Instalá la extensión o usá WalletConnect con QR.";
+    // Detect mobile/tablet Safari — MetaMask can't inject there
+    const isMobile = typeof navigator !== "undefined" &&
+      (/iPad|iPhone|iPod/.test(navigator.userAgent) || /Android/.test(navigator.userAgent));
+    if (isMobile) {
+      return "En móvil, abrí esta página dentro de la app de MetaMask (pestaña Navegador) o usá WalletConnect con QR.";
+    }
+    return "Billetera no encontrada. Instalá la extensión de MetaMask o usá WalletConnect con QR.";
   }
   if (msg.includes("rejected")) {
     return "Conexión rechazada por el usuario.";
