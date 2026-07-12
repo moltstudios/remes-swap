@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 255 255 255;
+    --foreground: 14 17 25;
+    --muted: 247 248 250;
+    --border: 217 221 230;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-white text-ink-900 font-sans;
+    @apply text-body;
+    /* Mobile-first — generous tap targets, comfortable type */
+  }
+
+  /* Mobile-first — make sure inputs are sized for thumbs */
+  input[type="text"],
+  input[type="number"] {
+    font-size: 18px; /* prevents iOS zoom on focus */
+  }
+
+  /* Selection color */
+  ::selection {
+    background-color: theme(colors.ink.900);
+    color: white;
+  }
+}
+
+@layer components {
+  /* Banking-grade primary CTA — solid, no gradient */
+  .btn-primary {
+    @apply bg-ink-900 text-white rounded-pill px-6 py-4
+           font-semibold text-body
+           transition-all duration-150 ease-out
+           hover:bg-ink-800 active:scale-[0.98]
+           disabled:opacity-40 disabled:cursor-not-allowed
+           disabled:active:scale-100;
+  }
+
+  .btn-secondary {
+    @apply bg-surface-alt text-ink-900 rounded-pill px-6 py-3
+           font-medium text-small
+           transition-colors duration-150
+           hover:bg-ink-100;
+  }
+
+  .btn-ghost {
+    @apply text-ink-600 rounded-pill px-4 py-2
+           font-medium text-small
+           transition-colors duration-150
+           hover:bg-surface-alt;
+  }
+
+  .card {
+    @apply bg-white rounded-card shadow-card border border-ink-100;
+  }
+
+  .input-amount {
+    @apply w-full bg-transparent
+           text-[44px] leading-none font-semibold
+           text-ink-900 placeholder:text-ink-300
+           focus:outline-none tabular-nums;
+  }
+}
+
+/* Hide number input spinners */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* Safe area for notched phones */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
