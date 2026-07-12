@@ -21,7 +21,10 @@
     "viem": "^2.21.32",
     "wagmi": "^2.13.4",
     "@wagmi/connectors": "^5.7.5",
-    "@coinbase/wallet-sdk": "^4.2.4"
+    "@coinbase/wallet-sdk": "^4.2.4",
+    "ethers": "^6.13.0",
+    "@supabase/supabase-js": "^2.45.0",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/node": "^22.7.7",
