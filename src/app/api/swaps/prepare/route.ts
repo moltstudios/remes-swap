@@ -84,6 +84,34 @@ export async function POST(request: NextRequest) {
     // Also prepare the approve calldata (if needed)
     const approveData = tokenContract.interface.encodeFunctionData('approve', [ROUTER_ADDRESS, amountIn])
 
+    // Estimate gas for both steps (helps users understand cost before signing)
+    let gasEstimate = { approve: '65000', swap: '180000' } // sensible defaults
+    try {
+      const [approveGas, swapGas] = await Promise.all([
+        provider.estimateGas({ to: tokenIn, data: approveData }),
+        provider.estimateGas({
+          to: ROUTER_ADDRESS,
+          data: swapData,
+          from: recipient,
+        }),
+      ])
+      // Add 20% buffer for safety (network conditions vary)
+      gasEstimate = {
+        approve: ((approveGas * 120n) / 100n).toString(),
+        swap: ((swapGas * 120n) / 100n).toString(),
+      }
+    } catch (gasErr) {
+      // Gas estimation can fail on simulation — fall back to defaults
+      console.warn('[prepare] Gas estimation failed, using defaults:', gasErr)
+    }
+
+    // Get current gas price for USD estimate
+    let gasPriceWei: bigint = 0n
+    try {
+      const feeData = await provider.getFeeData()
+      gasPriceWei = feeData.gasPrice ?? feeData.maxFeePerGas ?? 0n
+    } catch {}
+
     return NextResponse.json({
       quote,
       steps: [
@@ -107,6 +135,8 @@ export async function POST(request: NextRequest) {
       ],
       routerAddress: ROUTER_ADDRESS,
       deadline,
+      gasEstimate,
+      gasPriceWei: gasPriceWei.toString(),
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
