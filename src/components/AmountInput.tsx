@@ -22,12 +22,16 @@ type Props = {
   onMax?: () => void;
   decimals?: number;
   label?: string;
-  muted?: boolean; // 90% opacity — for result fields where user doesn't type
+  /** Mute the value text (90% opacity) — for result fields where user doesn't type. */
+  muted?: boolean;
 };
 
 /**
  * Amount input — bold display-size numerals, auto-formatted with commas.
  * States: empty · typing · loading · quoted · error · success.
+ *
+ * Per Timothy's Cash App reference: placeholder "0" should look like a starting
+ * block, not ghosted text. Once user types, full opacity, full weight.
  */
 export function AmountInput({
   value,
@@ -47,20 +51,19 @@ export function AmountInput({
   const fieldState =
     state === "error" ? "error" : focused ? "focused" : undefined;
 
-  // For input: show formatted (with commas). For change: pass clean digits.
   const displayValue = formatAmountInput(value);
 
   return (
     <div className="field-card" data-state={fieldState}>
       <div className="flex items-center justify-between mb-xs">
-        <label className="text-micro text-ink/50 uppercase tracking-wider">
+        <label className="text-micro text-ink/50 uppercase tracking-wider font-semibold">
           {label}
         </label>
         {onMax && state !== "loading" && (
           <button
             type="button"
             onClick={onMax}
-            className="text-micro font-semibold text-primary hover:text-primary-hover uppercase tracking-wider focus-visible:outline-none"
+            className="text-micro font-bold text-primary hover:text-primary-hover uppercase tracking-wider focus-visible:outline-none px-sm py-1 rounded-pill bg-primary/5"
           >
             Máx
           </button>
@@ -79,14 +82,13 @@ export function AmountInput({
           onBlur={() => setFocused(false)}
           readOnly={readOnly}
           className={
-            "amount-input flex-1 min-w-0" +
-            (muted ? " opacity-90" : "")
+            "amount-input flex-1 min-w-0" + (muted ? " opacity-90" : "")
           }
           data-state={state}
         />
         <div className="flex items-center gap-xs shrink-0 pb-1">
           {tokenLogo}
-          <span className="text-body font-semibold text-ink">{token}</span>
+          <span className="text-subhead font-bold text-ink">{token}</span>
         </div>
       </div>
       {state === "loading" && (
@@ -105,7 +107,6 @@ export function AmountInput({
 
 function sanitize(raw: string, decimals: number): string {
   if (!raw) return "";
-  // Strip commas (from pasted formatted values) before sanitizing
   let cleaned = raw.replace(/,/g, "").replace(/[^0-9.]/g, "");
   const firstDot = cleaned.indexOf(".");
   if (firstDot !== -1) {

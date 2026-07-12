@@ -3,46 +3,43 @@
 import { useI18n } from "@/lib/i18n";
 
 /**
- * TrustBar — ABOVE the input per brief: regulator / audit / reserve backing.
- * Three pills in a row. Quiet but always present.
+ * TrustBar — 3 elevated cards in a row (per Timothy #9, Cash App pattern).
+ * Subtle borders + shadow. Not inline pills.
  */
 export function TrustBar() {
   const { t } = useI18n();
+  const items = [
+    { icon: <ShieldIcon />, label: "Regulado", sub: "CNAD ES" },
+    { icon: <CheckIcon />, label: "Auditado", sub: "Mensual" },
+    { icon: <ReserveIcon />, label: "Reservas", sub: "1:1" },
+  ];
   return (
     <div
       className="grid grid-cols-3 gap-xs"
       role="region"
       aria-label="Señales de confianza"
     >
-      <Pill icon={<ShieldIcon />}>
-        <span className="block">{t.trust.regulated.split(" ")[0]}</span>
-        <span className="block">CNAD ES</span>
-      </Pill>
-      <Pill icon={<CheckIcon />}>
-        <span className="block">Auditado</span>
-        <span className="block">mensual</span>
-      </Pill>
-      <Pill icon={<ReserveIcon />}>
-        <span className="block">Reservas</span>
-        <span className="block">1:1</span>
-      </Pill>
-    </div>
-  );
-}
-
-function Pill({
-  icon,
-  children,
-}: {
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col items-center gap-1 px-xs py-sm rounded-md bg-surface">
-      <span className="text-primary" aria-hidden="true">{icon}</span>
-      <span className="text-[10px] leading-tight font-medium text-ink/70 text-center">
-        {children}
-      </span>
+      {items.map((item) => (
+        <div
+          key={item.label}
+          className="elevated-card flex flex-col items-center gap-xs px-xs py-sm"
+        >
+          <span
+            className="w-7 h-7 rounded-full flex items-center justify-center text-primary bg-primary/5"
+            aria-hidden="true"
+          >
+            {item.icon}
+          </span>
+          <div className="text-center">
+            <p className="text-micro font-bold text-ink leading-tight">
+              {item.label}
+            </p>
+            <p className="text-[10px] leading-tight text-ink/50 mt-0.5">
+              {item.sub}
+            </p>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

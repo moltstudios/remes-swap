@@ -16,7 +16,6 @@ import { TokenSelector } from "./TokenSelector";
 import { TokenLogo } from "./TokenLogo";
 import { AmountInput } from "./AmountInput";
 import { QuoteBreakdown, type QuoteState } from "./QuoteBreakdown";
-import { BigCTA, type CTAState } from "./BigCTA";
 import { DirectionToggle } from "./DirectionToggle";
 import { useCountUp } from "@/hooks/useCountUp";
 
@@ -25,13 +24,12 @@ const QUOTE_STALE_MS = 30_000;
 
 /**
  * SwapCard — the entire swap form on the main screen.
- * Routes to /confirm on CTA tap; execution happens there.
- *
- * Per Ghost polish list (2026-07-12):
- * - No duplicate Conectar button — wallet pill in header is the only CTA.
- * - 48px Bold amounts on the receive field (count-up animates from 0 → quote).
- * - Shimmer skeleton while quote is loading.
- * - Native keyboard with auto-comma formatting (inputMode="decimal" already in AmountInput).
+ * Per Timothy polish (Cash App / Coinbase references):
+ * - Numbers full opacity (Cash App: $0 biggest thing on screen, full black)
+ * - Cards on subtle gradient bg, white surfaces with shadows
+ * - Always-visible CTA at bottom (disabled state when empty)
+ * - "MAX | CAMBIAR" two-button row when wallet connected
+ * - No duplicate Conectar button
  */
 export function SwapCard() {
   const router = useRouter();
@@ -107,43 +105,54 @@ export function SwapCard() {
   const minReceivedNum = quote ? parseFloat(quote.minReceived) : 0;
   const feeNum = quote ? parseFloat(quote.fee) : 0;
 
-  let ctaState: CTAState = "rest";
-  let ctaLabel = `${t.swap.swap} ${formatAmount(amount || "0", 0)} ${fromToken.symbol}`;
+  // Always-visible CTA state derivation
+  const ctaLabel =
+    !isConnected
+      ? t.wallet.connect
+      : !amount || parseFloat(amount) === 0
+      ? "INGRESA UN MONTO"
+      : quoteState === "loading"
+      ? "PIDIENDO PRECIO..."
+      : quoteState === "error"
+      ? "INTENTA DE NUEVO"
+      : insufficient
+      ? "NO TE ALCANZA"
+      : `CAMBIAR ${formatAmount(amount, 2)} ${fromToken.symbol}`;
 
-  if (!isConnected) {
-    ctaLabel = t.wallet.connect;
-    ctaState = "disabled";
-  } else if (!amount || parseFloat(amount) === 0) {
-    ctaLabel = t.swap.enterAmount;
-    ctaState = "disabled";
-  } else if (quoteState === "loading") {
-    ctaLabel = t.swap.fetchingQuote;
-    ctaState = "loading";
-  } else if (quoteState === "error") {
-    ctaLabel = t.swap.quoteFailed;
-    ctaState = "error";
-  } else if (insufficient) {
-    ctaLabel = t.swap.insufficient;
-    ctaState = "error";
-  } else if (quoteState === "fresh" || quoteState === "stale") {
-    ctaState = "rest";
-    ctaLabel = `${t.swap.swap} ${formatAmount(amount, 2)} ${fromToken.symbol}`;
+  const ctaState: "rest" | "loading" | "error" | "disabled" =
+    quoteState === "loading"
+      ? "loading"
+      : quoteState === "error"
+      ? "error"
+      : insufficient
+      ? "error"
+      : !isConnected || !amount || parseFloat(amount) === 0
+      ? "disabled"
+      : "rest";
+
+  const ctaDisabled = ctaState === "disabled" || ctaState === "loading";
+
+  function handleMax() {
+    if (fromBalance && fromBalance.value > 0n) {
+      setAmount(formatBalance(fromBalance.value, fromBalance.decimals));
+    }
   }
 
   function handleCta() {
-    if (!isConnected || !amount || !quote) return;
+    if (ctaDisabled || !quote) return;
     router.push(
       `/confirm?from=${fromToken.symbol}&to=${toToken.symbol}&amount=${amount}&received=${quote.expectedOutput}`
     );
   }
 
   return (
-    <div className="space-y-lg">
+    <div className="space-y-md">
       <TrustBar />
 
-      <div>
-        <h1 className="text-head text-ink leading-tight">{t.swap.headline}</h1>
-        <p className="text-small text-ink/60 mt-xs">{t.swap.subhead}</p>
+      <div className="pt-xs">
+        <h1 className="text-head text-ink leading-tight">
+          {t.swap.headline}
+        </h1>
       </div>
 
       <AmountInput
@@ -163,14 +172,7 @@ export function SwapCard() {
         }
         token={fromToken.symbol}
         tokenLogo={<TokenLogo symbol={fromToken.symbol} size="sm" />}
-        onMax={
-          fromBalance && fromBalance.value > 0n
-            ? () =>
-                setAmount(
-                  formatBalance(fromBalance.value, fromBalance.decimals)
-                )
-            : undefined
-        }
+        onMax={isConnected ? handleMax : undefined}
       />
 
       <DirectionToggle
@@ -192,7 +194,6 @@ export function SwapCard() {
         value={quote ? formatAmount(receivedAnimated, 2) : ""}
         onChange={() => {}}
         readOnly
-        muted
         state={
           quoteState === "loading"
             ? "loading"
@@ -208,7 +209,7 @@ export function SwapCard() {
         decimals={2}
       />
 
-      {(amount && parseFloat(amount) > 0) && (
+      {amount && parseFloat(amount) > 0 && (
         <QuoteBreakdown
           state={quoteState}
           rate={rate}
@@ -222,12 +223,20 @@ export function SwapCard() {
         />
       )}
 
-      <div className="sticky bottom-0 -mx-md px-md pt-md pb-md bg-gradient-to-t from-bg via-bg to-transparent">
-        {isConnected && (
-          <BigCTA state={ctaState} onClick={handleCta} ariaLabel={ctaLabel}>
-            {ctaLabel}
-          </BigCTA>
-        )}
+      {/* ALWAYS-VISIBLE CTA — disabled "Ingresa un monto" when empty */}
+      <div className="sticky bottom-0 -mx-md px-md pt-md pb-md bg-gradient-to-t from-white via-white/90 to-transparent">
+        <button
+          type="button"
+          onClick={handleCta}
+          disabled={ctaDisabled}
+          data-state={ctaState}
+          aria-busy={ctaState === "loading"}
+          aria-label={ctaLabel}
+          className="cta-primary flex items-center justify-center gap-sm"
+        >
+          {ctaState === "loading" && <Spinner />}
+          {ctaLabel}
+        </button>
       </div>
     </div>
   );
@@ -243,4 +252,30 @@ function formatBalance(value: bigint, decimals: number): string {
     .replace(/0+$/, "");
   if (!fStr) return whole.toString();
   return `${whole}.${fStr}`;
+}
+
+function Spinner() {
+  return (
+    <svg
+      className="w-4 h-4 animate-spin"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <circle
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeOpacity="0.25"
+      />
+      <path
+        d="M12 2a10 10 0 0 1 10 10"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
 }
