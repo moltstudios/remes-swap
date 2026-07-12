@@ -123,17 +123,31 @@ export function buildOptions(
   connectors: readonly Connector[],
   env: WalletEnv
 ): WalletOption[] {
+  // MetaMask SDK connector — if present, it owns the MetaMask entry.
+  // EIP-6963 io.metamask announcements get filtered out to avoid dupes.
+  const hasMetaMaskSdk = connectors.some(
+    (c) => c.id === "metaMaskSDK" || c.type === "metaMask"
+  );
+
   // EIP-6963-announced wallets (id = reverse-DNS). Dedupe by id —
   // some browsers announce twice across frames.
   const seen = new Set<string>();
   const announced = connectors.filter((c) => {
     const isAnnounced = c.type === "injected" && c.id !== "injected";
     if (!isAnnounced || seen.has(c.id)) return false;
+    // If metaMask() SDK connector is configured, it handles MetaMask —
+    // skip the EIP-6963 announcement to prevent duplicate entries.
+    if (hasMetaMaskSdk && (c.id === "io.metamask" || c.id === "io.metamask.mobile")) {
+      return false;
+    }
     seen.add(c.id);
     return true;
   });
 
   const generic = connectors.find((c) => c.id === "injected");
+  const metaMaskSdk = connectors.find(
+    (c) => c.id === "metaMaskSDK" || c.type === "metaMask"
+  );
   const coinbaseSdk = connectors.find((c) => c.id === "coinbaseWalletSDK");
   const wc = connectors.find((c) => c.id === "walletConnect");
   const coinbaseAnnounced = announced.some(
@@ -172,6 +186,20 @@ export function buildOptions(
 
   // ---- Desktop ----
   const options: WalletOption[] = announced.map(toAnnouncedOption);
+
+  // MetaMask SDK connector — uses SDK's own connect() which triggers the
+  // extension popup instead of deeplinking to mobile app. This fixes the
+  // "opens MetaMask mobile instead of extension" bug on Desktop Brave.
+  if (metaMaskSdk) {
+    options.push({
+      kind: "connector",
+      connector: metaMaskSdk,
+      label: "MetaMask",
+      badge: "detectada",
+      brand: "metamask",
+    });
+  }
+
   if (options.length === 0 && env.hasInjected && generic) {
     options.push(toGenericOption(generic, env));
   }

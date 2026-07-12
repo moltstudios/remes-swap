@@ -1,6 +1,6 @@
 import { http, createConfig } from "wagmi";
 import { base, baseSepolia } from "wagmi/chains";
-import { injected, walletConnect, coinbaseWallet } from "wagmi/connectors";
+import { injected, walletConnect, coinbaseWallet, metaMask } from "wagmi/connectors";
 
 // ---------------------------------------------------------------------------
 // WHAT CHANGED AND WHY (2026-07-12 wallet-picker fix)
@@ -47,6 +47,23 @@ export const config = createConfig({
   connectors: [
     // Fallback only. Hidden by the picker when EIP-6963 wallets exist.
     injected({ shimDisconnect: true }),
+
+    // MetaMask SDK connector — uses MetaMask SDK's own connect() logic
+    // instead of raw eth_requestAccounts on the EIP-1193 provider.
+    // This prevents the "opens mobile app instead of extension popup"
+    // bug on Desktop Brave with MetaMask extension installed.
+    //
+    // The SDK properly detects the extension and uses the popup, even
+    // when Brave's built-in wallet shadows window.ethereum.
+    //
+    // rdns: ['io.metamask', 'io.metamask.mobile'] tells wagmi to bind
+    // EIP-6963 MetaMask announcements to this connector. No duplicates.
+    metaMask({
+      dappMetadata: {
+        name: "Remes",
+        url: SITE_URL,
+      },
+    }),
 
     // Coinbase SDK: in-app browser, extension popup, mobile deep link,
     // and Smart Wallet. The picker hides this row if the Coinbase
