@@ -41,7 +41,7 @@ export const es = {
     selectToken: "Elegir moneda",
     max: "Máx",
     insufficient: "No te alcanza",
-    enterAmount: "Ingresá un monto",
+    enterAmount: "Conecta tu wallet para empezar",
     swap: "CAMBIAR",
     swapping: "Cambiando...",
     approving: "Autorizando...",

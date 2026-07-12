@@ -12,8 +12,9 @@
 
   body {
     @apply text-ink font-sans text-body antialiased;
-    /* Subtle gradient — "not a wireframe" per Timothy #10 */
-    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    /* Subtle gradient + dim overlay when bottom sheet is open.
+       Per Ghost #8: bg-gradient-to-b from-white via-white to-[#F8FAFC]. */
+    background: linear-gradient(180deg, #ffffff 0%, #ffffff 40%, #f8fafc 100%);
     background-attachment: fixed;
     min-height: 100vh;
   }

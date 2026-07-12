@@ -119,7 +119,7 @@ export function SwapCard() {
   // Always-visible CTA state derivation
   const ctaLabel =
     !isConnected
-      ? t.wallet.connect
+      ? "CONECTA TU WALLET PARA EMPEZAR"
       : !amount || parseFloat(amount) === 0
       ? "INGRESA UN MONTO"
       : quoteState === "loading"
