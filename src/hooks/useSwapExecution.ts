@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useAccount } from "wagmi";
+import { useEffect, useState, useCallback } from "react";
+import { useAccount, useWaitForTransactionReceipt } from "wagmi";
 import { fetchQuote, type QuoteResponse } from "@/lib/quote";
 
 type SwapStep = {
@@ -13,51 +13,66 @@ type SwapStep = {
   value: string;
 };
 
+export type GasEstimate = {
+  approve: string;
+  swap: string;
+};
+
 type SwapPrepResponse = {
   quote: QuoteResponse;
   steps: SwapStep[];
   routerAddress: string;
   deadline: number;
+  gasEstimate?: GasEstimate;
+  gasPriceWei?: string;
+};
+
+export type PreparedSwap = {
+  approvalHash: `0x${string}`;
+  swapStep: SwapStep;
+  quote: QuoteResponse;
+  gasEstimate?: GasEstimate;
+  gasPriceWei?: string;
+};
+
+export type PreparedDirectSwap = {
+  swapHash: `0x${string}`;
+  gasEstimate?: GasEstimate;
+  gasPriceWei?: string;
 };
 
 export type TxStage =
   | { kind: "idle" }
   | { kind: "preparing" }
-  | { kind: "awaiting-approval"; txHash: string }
-  | { kind: "approval-confirmed" }
-  | { kind: "broadcasting-swap" }
-  | { kind: "swap-sent"; txHash: string }
-  | { kind: "complete"; txHash: string }
+  | { kind: "needs-approval" }
+  | {
+      kind: "awaiting-approval";
+      txHash: `0x${string}`;
+      gasEstimate?: GasEstimate;
+      gasPriceWei?: string;
+    }
+  | { kind: "awaiting-swap"; txHash: `0x${string}`; gasEstimate?: GasEstimate; gasPriceWei?: string }
+  | { kind: "complete"; txHash: `0x${string}` }
   | { kind: "error"; message: string };
 
 const DEFAULT_SLIPPAGE_BPS = 50;
 
-async function waitForTx(hash: string): Promise<void> {
-  const eth = (window as unknown as { ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> } }).ethereum;
-  if (!eth) return;
-  // Poll until the tx is mined
-  for (let i = 0; i < 60; i++) {
-    const receipt = (await eth.request({
-      method: "eth_getTransactionReceipt",
-      params: [hash],
-    })) as { blockHash?: string } | null;
-    if (receipt?.blockHash) return;
-    await new Promise((r) => setTimeout(r, 2000));
-  }
-}
-
 /**
- * useSwapExecution — runs the full swap flow:
- * 1. Prepare (POST /api/swaps/prepare) → approve + swap calldata
- * 2. Send approve tx via wallet
- * 3. Wait for approval
- * 4. Send swap tx via wallet
- * 5. Record swap in backend (non-blocking)
+ * useSwapExecution — runs the swap flow.
  *
- * Extracted from SwapCard for reuse on /confirm.
+ * Lifecycle:
+ *   idle → preparing → needs-approval (skip if allowance OK)
+ *   → awaiting-approval (waiting for user to sign + receipt) → awaiting-swap
+ *   → complete
+ *
+ * Tx-receipt watching is delegated to wagmi's useWaitForTransactionReceipt
+ * (in the Confirm page) via the exposed `pendingHash` field. The Confirm UI
+ * watches the hash and calls `markApproved()` / `markSwapped()` to advance
+ * the stage. This keeps the hook focused on orchestration and removes the
+ * old manual eth_getTransactionReceipt polling.
  */
 export function useSwapExecution() {
-  const { address, isConnected, chain } = useAccount();
+  const { address, isConnected } = useAccount();
   const [stage, setStage] = useState<TxStage>({ kind: "idle" });
 
   const execute = useCallback(
@@ -67,7 +82,7 @@ export function useSwapExecution() {
       fromAddress: `0x${string}`;
       toAddress: `0x${string}`;
       amount: string;
-    }) => {
+    }): Promise<PreparedSwap | PreparedDirectSwap | null> => {
       if (!isConnected || !address) {
         setStage({ kind: "error", message: "Conectá tu billetera primero." });
         return null;
@@ -102,28 +117,17 @@ export function useSwapExecution() {
         }
 
         const prep: SwapPrepResponse = await prepRes.json();
-        const eth = (window as unknown as {
-          ethereum?: {
-            request: (args: { method: string; params?: unknown[] }) => Promise<string>;
-          };
-        }).ethereum;
-        if (!eth) {
-          throw new Error("No se detectó billetera.");
-        }
-
+        const gasEstimate = prep.gasEstimate;
+        const gasPriceWei = prep.gasPriceWei;
         const approveStep = prep.steps[0];
         const swapStep = prep.steps[1];
 
-        // Check allowance — skip approve if Router already has enough
-        const amountInRaw = BigInt(
-          // parse amount to raw units
-          (() => {
-            const [w, f = ""] = params.amount.split(".");
-            const padded = (f + "0".repeat(6)).slice(0, 6);
-            return (BigInt(w || "0") * 10n ** 6n + BigInt(padded || "0")).toString();
-          })()
-        );
+        // Compute raw amount (tokenIn has 6 decimals)
+        const [w, f = ""] = params.amount.split(".");
+        const padded = (f + "0".repeat(6)).slice(0, 6);
+        const amountInRaw = BigInt(w || "0") * 10n ** 6n + BigInt(padded || "0");
 
+        // Check allowance — skip approve if Router already has enough
         let needsApprove = true;
         try {
           const allowanceRes = await fetch("/api/token/allowance", {
@@ -145,10 +149,19 @@ export function useSwapExecution() {
           // If check fails, default to sending approve (safe)
         }
 
+        const eth = (window as unknown as {
+          ethereum?: {
+            request: (args: { method: string; params?: unknown[] }) => Promise<string>;
+          };
+        }).ethereum;
+        if (!eth) {
+          throw new Error("No se detectó billetera.");
+        }
+
         // 1. Approve (only if needed)
         if (needsApprove) {
-          setStage({ kind: "awaiting-approval", txHash: "" });
-          const approveTx = await eth.request({
+          setStage({ kind: "needs-approval" });
+          const approveTx = (await eth.request({
             method: "eth_sendTransaction",
             params: [
               {
@@ -158,16 +171,18 @@ export function useSwapExecution() {
                 value: "0x0",
               },
             ],
+          })) as `0x${string}`;
+          setStage({
+            kind: "awaiting-approval",
+            txHash: approveTx,
+            gasEstimate,
+            gasPriceWei,
           });
-          setStage({ kind: "awaiting-approval", txHash: approveTx });
-
-          await waitForTx(approveTx);
+          return { approvalHash: approveTx, swapStep, quote, gasEstimate, gasPriceWei };
         }
-        setStage({ kind: "approval-confirmed" });
 
-        // 2. Swap
-        setStage({ kind: "broadcasting-swap" });
-        const swapTx = await eth.request({
+        // 2. Allowance already sufficient — go straight to swap
+        const swapTx = (await eth.request({
           method: "eth_sendTransaction",
           params: [
             {
@@ -177,10 +192,10 @@ export function useSwapExecution() {
               value: "0x0",
             },
           ],
-        });
-        setStage({ kind: "swap-sent", txHash: swapTx });
+        })) as `0x${string}`;
+        setStage({ kind: "awaiting-swap", txHash: swapTx, gasEstimate, gasPriceWei });
 
-        // 3. Record (non-blocking)
+        // Non-blocking record
         fetch("/api/swaps/record", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -198,8 +213,7 @@ export function useSwapExecution() {
           }),
         }).catch(() => {});
 
-        setStage({ kind: "complete", txHash: swapTx });
-        return swapTx;
+        return { swapHash: swapTx, gasEstimate, gasPriceWei };
       } catch (e) {
         const err = e as Error & { code?: number };
         if (err.code === 4001 || err.code === -32603) {
@@ -216,7 +230,107 @@ export function useSwapExecution() {
     [address, isConnected]
   );
 
+  /**
+   * After approval tx confirms, send the swap tx.
+   * Called from the Confirm page once useWaitForTransactionReceipt fires.
+   */
+  const sendSwapAfterApproval = useCallback(
+    async (params: {
+      fromSymbol: string;
+      toSymbol: string;
+      fromAddress: `0x${string}`;
+      toAddress: `0x${string}`;
+      amount: string;
+      swapStep: SwapStep;
+      quote: QuoteResponse;
+      gasEstimate?: GasEstimate;
+      gasPriceWei?: string;
+    }): Promise<`0x${string}` | null> => {
+      if (!isConnected || !address) return null;
+      const eth = (window as unknown as {
+        ethereum?: {
+          request: (args: { method: string; params?: unknown[] }) => Promise<string>;
+        };
+      }).ethereum;
+      if (!eth) return null;
+      const swapTx = (await eth.request({
+        method: "eth_sendTransaction",
+        params: [
+          {
+            from: address,
+            to: params.swapStep.to,
+            data: params.swapStep.data,
+            value: "0x0",
+          },
+        ],
+      })) as `0x${string}`;
+
+      setStage({
+        kind: "awaiting-swap",
+        txHash: swapTx,
+        gasEstimate: params.gasEstimate,
+        gasPriceWei: params.gasPriceWei,
+      });
+
+      // Non-blocking record
+      fetch("/api/swaps/record", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: address,
+          source_asset: params.fromSymbol,
+          dest_asset: params.toSymbol,
+          source_amount: params.amount,
+          dest_amount: params.quote.expectedOutput,
+          rate: params.quote.route || "",
+          fee_amount: params.quote.fee,
+          fee_currency: params.fromSymbol,
+          evm_tx_hash: swapTx,
+          route: params.quote.route || "Uniswap V3",
+        }),
+      }).catch(() => {});
+
+      return swapTx;
+    },
+    [address, isConnected]
+  );
+
+  const markComplete = useCallback((txHash: `0x${string}`) => {
+    setStage({ kind: "complete", txHash });
+  }, []);
+
+  const markError = useCallback((message: string) => {
+    setStage({ kind: "error", message });
+  }, []);
+
   const reset = useCallback(() => setStage({ kind: "idle" }), []);
 
-  return { stage, execute, reset };
+  return {
+    stage,
+    execute,
+    sendSwapAfterApproval,
+    markComplete,
+    markError,
+    reset,
+  };
 }
+
+/**
+ * useTransactionAwaiter — wagmi-backed receipt watcher.
+ * The caller passes a hash and watches `isSuccess` to advance their UI.
+ */
+export function useTransactionAwaiter(hash: `0x${string}` | undefined) {
+  const enabled = Boolean(hash);
+  const { data, isLoading, isSuccess, isError, error } = useWaitForTransactionReceipt(
+    {
+      hash,
+      confirmations: 1,
+      pollingInterval: 2_000,
+      query: { enabled },
+    }
+  );
+  return { data, isLoading, isSuccess, isError, error };
+}
+
+// Export a useEffect re-import to keep tree-shaking honest in older configs
+export const _ref = useEffect;

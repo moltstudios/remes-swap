@@ -1,13 +1,19 @@
 "use client";
 
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import { WalletButton } from "@/components/WalletButton";
 import { BigCTA } from "@/components/BigCTA";
 import { useI18n } from "@/lib/i18n";
 import { formatAmount, formatPercent } from "@/lib/format";
-import { useSwapExecution } from "@/hooks/useSwapExecution";
+import {
+  useSwapExecution,
+  useTransactionAwaiter,
+  type GasEstimate,
+  type PreparedSwap,
+} from "@/hooks/useSwapExecution";
+import { useEthPrice, formatGasUsd } from "@/hooks/useEthPrice";
 import { BASE_TOKENS } from "@/lib/web3/contracts";
 import type { TxStage } from "@/hooks/useSwapExecution";
 
@@ -20,8 +26,6 @@ function ConfirmInner() {
 
   const from = (search.get("from") ?? "USDC") as "USDC" | "USDT";
   const to = (search.get("to") ?? "USDT") as "USDC" | "USDT";
-  // Strip commas at the boundary — URL params from /swap are raw numbers,
-  // but defensive in case someone hand-shares a link or bookmarks it.
   const amount = (search.get("amount") ?? "0").replace(/,/g, "");
   const received = (search.get("received") ?? "0").replace(/,/g, "");
 
@@ -30,8 +34,86 @@ function ConfirmInner() {
   const fee = sendNum * PLATFORM_FEE_PERCENT;
   const rate = sendNum > 0 ? receiveNum / sendNum : 0;
 
-  const { stage, execute, reset } = useSwapExecution();
+  const ethUsd = useEthPrice();
+  const {
+    stage,
+    execute,
+    sendSwapAfterApproval,
+    markComplete,
+    markError,
+    reset,
+  } = useSwapExecution();
 
+  // The PreparedSwap returned from execute() — used to fire the swap tx
+  // once wagmi confirms the approval receipt.
+  const [pendingSwap, setPendingSwap] = useState<PreparedSwap | null>(null);
+
+  // Currently-watched hash (approve OR swap)
+  const watchingHash: `0x${string}` | undefined =
+    stage.kind === "awaiting-approval"
+      ? stage.txHash
+      : stage.kind === "awaiting-swap"
+      ? stage.txHash
+      : undefined;
+
+  // wagmi's receipt watcher — replaces the old manual eth_getTransactionReceipt poll
+  const {
+    isSuccess: txConfirmed,
+    isError: txReverted,
+    error: txError,
+  } = useTransactionAwaiter(watchingHash);
+
+  // Approval confirmed → fire the swap tx using the PreparedSwap we stashed
+  useEffect(() => {
+    if (stage.kind !== "awaiting-approval" || !txConfirmed) return;
+    if (!pendingSwap) return;
+    void (async () => {
+      const fromAddress =
+        from === "USDC" ? BASE_TOKENS.USDC.address : BASE_TOKENS.USDT.address;
+      const toAddress =
+        to === "USDC" ? BASE_TOKENS.USDC.address : BASE_TOKENS.USDT.address;
+      const swapHash = await sendSwapAfterApproval({
+        fromSymbol: from,
+        toSymbol: to,
+        fromAddress,
+        toAddress,
+        amount,
+        swapStep: pendingSwap.swapStep,
+        quote: pendingSwap.quote,
+        gasEstimate: pendingSwap.gasEstimate,
+        gasPriceWei: pendingSwap.gasPriceWei,
+      });
+      if (!swapHash) {
+        markError("No se pudo enviar el cambio.");
+      }
+      setPendingSwap(null);
+    })();
+  }, [
+    stage,
+    txConfirmed,
+    pendingSwap,
+    sendSwapAfterApproval,
+    markError,
+    from,
+    to,
+    amount,
+  ]);
+
+  // Swap confirmed → mark complete
+  useEffect(() => {
+    if (stage.kind === "awaiting-swap" && txConfirmed) {
+      markComplete(stage.txHash);
+    }
+  }, [stage, txConfirmed, markComplete]);
+
+  // Reverted → error
+  useEffect(() => {
+    if (txReverted && txError) {
+      markError("La transacción fue revertida en la red.");
+    }
+  }, [txReverted, txError, markError]);
+
+  // Complete → redirect to done
   useEffect(() => {
     if (stage.kind === "complete") {
       router.push(
@@ -49,11 +131,23 @@ function ConfirmInner() {
   const toAddress =
     to === "USDC" ? BASE_TOKENS.USDC.address : BASE_TOKENS.USDT.address;
 
-  const ctaState =
+  // Gas estimate USD — sum approve + swap gas units, multiply by gas price
+  const gasUsd = useMemo(() => {
+    if (stage.kind !== "awaiting-approval" && stage.kind !== "awaiting-swap") {
+      return null;
+    }
+    const ge = stage.gasEstimate;
+    const gp = stage.gasPriceWei;
+    if (!ge || !gp) return null;
+    const totalGas = BigInt(ge.approve) + BigInt(ge.swap);
+    return formatGasUsd(totalGas, gp, ethUsd);
+  }, [stage, ethUsd]);
+
+  const ctaState: "rest" | "loading" | "error" | "disabled" =
     stage.kind === "preparing" ||
+    stage.kind === "needs-approval" ||
     stage.kind === "awaiting-approval" ||
-    stage.kind === "broadcasting-swap" ||
-    stage.kind === "approval-confirmed"
+    stage.kind === "awaiting-swap"
       ? "loading"
       : stage.kind === "error"
       ? "error"
@@ -62,22 +156,27 @@ function ConfirmInner() {
   const ctaLabel =
     stage.kind === "preparing"
       ? "Preparando..."
-      : stage.kind === "awaiting-approval"
+      : stage.kind === "needs-approval" || stage.kind === "awaiting-approval"
       ? "Esperando tu firma..."
-      : stage.kind === "broadcasting-swap"
+      : stage.kind === "awaiting-swap"
       ? "Enviando cambio..."
       : stage.kind === "complete"
       ? "Listo"
       : t.confirm.confirm;
 
-  function handleConfirm() {
-    execute({
+  async function handleConfirm() {
+    const result = await execute({
       fromSymbol: from,
       toSymbol: to,
       fromAddress,
       toAddress,
       amount,
     });
+    if (result && "approvalHash" in result) {
+      setPendingSwap(result);
+    }
+    // Direct swap path (allowance OK): useSwapExecution already fired the
+    // swap tx and set stage to awaiting-swap — wagmi picks it up from there.
   }
 
   return (
@@ -95,7 +194,6 @@ function ConfirmInner() {
       </header>
 
       <section className="max-w-content mx-auto px-md pt-md pb-md space-y-md">
-        {/* Back row */}
         <div className="flex items-center gap-sm -ml-sm">
           <button
             onClick={() => router.back()}
@@ -118,7 +216,6 @@ function ConfirmInner() {
           <span className="text-small text-ink/60">{t.confirm.backCta}</span>
         </div>
 
-        {/* Subtle 3-step indicator (per Ghost 7: small gray, active blue bold, connector dots static) */}
         <SubtleProgress stage={stage} />
 
         <div>
@@ -126,7 +223,6 @@ function ConfirmInner() {
           <p className="text-small text-ink/60 mt-xs">{t.confirm.subtitle}</p>
         </div>
 
-        {/* Headline amount */}
         <div className="bg-surface rounded-lg p-md">
           <p className="text-micro text-ink/50 uppercase tracking-wider">
             {t.confirm.youSend}
@@ -149,7 +245,6 @@ function ConfirmInner() {
           </div>
         </div>
 
-        {/* Detail rows */}
         <div className="space-y-xs">
           <Row
             label={t.confirm.rate}
@@ -166,9 +261,15 @@ function ConfirmInner() {
             label={t.confirm.estimatedTime}
             value={`~30 ${t.common.seconds}`}
           />
+          {/* Gas estimate USD — surfaced from /api/swaps/prepare */}
+          {gasUsd !== null && (
+            <Row
+              label="Gas estimado"
+              value={`< $${gasUsd.toFixed(2)} USD`}
+            />
+          )}
         </div>
 
-        {/* Single trust line (per Ghost 8: confirm has ONE trust line, not TrustBar) */}
         <div className="flex items-start gap-sm bg-accent/10 rounded-md p-md">
           <svg
             viewBox="0 0 24 24"
@@ -188,7 +289,6 @@ function ConfirmInner() {
           </p>
         </div>
 
-        {/* CTA */}
         <BigCTA state={ctaState} onClick={handleConfirm}>
           {ctaLabel}
         </BigCTA>
@@ -203,25 +303,13 @@ function ConfirmInner() {
   );
 }
 
-/**
- * SubtleProgress — 3 steps per Ghost spec:
- * - 14px regular gray
- * - Active step blue bold
- * - Connector dots static (not animated)
- * Steps: Revisar · Firmar · Listo
- */
 function SubtleProgress({ stage }: { stage: TxStage }) {
-  // Map our internal stages to the 3 user-visible steps:
-  // 1 Revisar (idle)
-  // 2 Firmar (preparing/awaiting-approval/approval-confirmed/broadcasting-swap/swap-sent)
-  // 3 Listo (complete)
   let active = 0;
   if (
     stage.kind === "preparing" ||
+    stage.kind === "needs-approval" ||
     stage.kind === "awaiting-approval" ||
-    stage.kind === "approval-confirmed" ||
-    stage.kind === "broadcasting-swap" ||
-    stage.kind === "swap-sent"
+    stage.kind === "awaiting-swap"
   ) {
     active = 1;
   } else if (stage.kind === "complete") {
